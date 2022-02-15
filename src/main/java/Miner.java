@@ -2,8 +2,10 @@
 
 
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 
+import java.util.ArrayList;
 import java.util.Date;
 
 import java.util.List;
@@ -12,13 +14,15 @@ import java.util.regex.Pattern;
 
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
-import org.eclipse.jgit.api.errors.InvalidRemoteException;
 import org.eclipse.jgit.api.errors.JGitInternalException;
-import org.eclipse.jgit.api.errors.TransportException;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
 import org.eclipse.jgit.internal.storage.file.FileRepository;
-import org.eclipse.jgit.lib.*;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectReader;
+import org.eclipse.jgit.lib.Ref;
+import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevTree;
 import org.eclipse.jgit.revwalk.RevWalk;
@@ -26,10 +30,23 @@ import org.eclipse.jgit.treewalk.AbstractTreeIterator;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 
 
+/**
+ * Algorithm to mine GIT Commit histories using JGit
+ *
+ * @author Anders Renström
+ */
 public class Miner {
-    final static String REPODIRECTORY = "gitRepos/repos"; // Directory in which all repos are saved
-    final static String PATHGITDIRECTORY = REPODIRECTORY+"/.git"; // Local directory to git repo
-    final static String URLTOREPO = "https://github.com/Renstrom/act.git"; // URL to repo
+
+
+    static ArrayList<String> fullData       = new ArrayList<>();
+    static ArrayList<String> hashValues     = new ArrayList<>();
+    static ArrayList<String> refactoredData = new ArrayList<>(); // NOTE May be temporary
+
+
+    final static String REPODIRECTORY       = "gitRepos/repos"; // Directory in which all repos are saved
+    final static String PATHGITDIRECTORY    = REPODIRECTORY+"/.git"; // Local directory to git repo
+    final static String URLTOREPO           = "https://github.com/Renstrom/act.git"; // URL to repo
+    final static String OUTPUTPATH          =  URLTOREPO.split("/.*\\.git$")[1];
 
 
     // Pattern to find the correct commits
@@ -40,15 +57,15 @@ public class Miner {
      */
     public static void walk() throws IOException, GitAPIException {
         String oldHashID;
-        String newHashID = "";
-        boolean matched = false; // Used to print the correct git diff
-        Repository repo = new FileRepository(PATHGITDIRECTORY);
-        Git git = new Git(repo);
-        RevWalk walk = new RevWalk(repo);
+        String newHashID    = "";
+        boolean matched     = false; // Used to print the correct git diff
 
-        List<Ref> branches = git.branchList().call();
+        Repository repo     = new FileRepository(PATHGITDIRECTORY);
+        Git git             = new Git(repo);
+        RevWalk walk        = new RevWalk(repo);
+        List<Ref> branches  = git.branchList().call();
 
-        for (Ref branch : branches) {
+        for (Ref branch : branches) { // Iterating over all branches
             String branchName = branch.getName();
 
             System.out.println("Commits of branch: " + branch.getName());
@@ -79,18 +96,14 @@ public class Miner {
                         oldHashID = commit.getName();
                         AbstractTreeIterator oldCommit = prepareTreeParser(repo, oldHashID);
                         AbstractTreeIterator newCommit = prepareTreeParser(repo, newHashID);
-                       // gitDiff(repo,oldCommit,newCommit);
-
-
+                        gitDiff(repo,oldCommit,newCommit);
                         matched = false;
                     }
-
-
                     newHashID = commit.getName();
                     if(COMMITPATTERN.matcher(commit.getFullMessage()).find()){
                         System.out.println(commit.getName());
                         System.out.println(commit.getAuthorIdent().getName());
-                        System.out.println(new Date(commit.getCommitTime() * 1000L));
+                        System.out.println(new Date(commit.getCommitTime() * 1000L)); // Parsing to the correct date
                         System.out.println(commit.getFullMessage());
                         matched = true;
                     }
@@ -127,12 +140,12 @@ public class Miner {
      * @throws IOException If reader can't be resetted
      */
     private static AbstractTreeIterator prepareTreeParser(Repository repository, String objectId) throws IOException {
-        RevWalk walk = new RevWalk(repository);
-        RevCommit commit = walk.parseCommit(ObjectId.fromString(objectId));
-        RevTree tree = walk.parseTree(commit.getTree().getId());
+        RevWalk walk        = new RevWalk(repository);
+        RevCommit commit    = walk.parseCommit(ObjectId.fromString(objectId));
+        RevTree tree        = walk.parseTree(commit.getTree().getId());
 
-        CanonicalTreeParser treeParser = new CanonicalTreeParser();
-        ObjectReader reader = repository.newObjectReader();
+        CanonicalTreeParser treeParser  = new CanonicalTreeParser();
+        ObjectReader        reader      = repository.newObjectReader();
         treeParser.reset(reader, tree.getId());
         walk.dispose();
 
@@ -151,6 +164,40 @@ public class Miner {
                 .call();
 
     }
+
+    /**
+     * Creates a directory for the corresponding repository, if folder gets created the output will be
+     */
+    private static void makeDirectory(){
+        System.out.println( (new File("output/"+OUTPUTPATH).mkdir() ) ? "Folder Created"  : "Folder Already Created");
+    }
+
+
+    /**
+     * Simple write to file function, where each file is currently written down as strings
+     * @param pathAndName Complete path to file
+     * @param data Data recorded
+     */
+    private static void writeToFile(String pathAndName, ArrayList<String> data){
+        File dataFile = new File(pathAndName);
+        try{
+            FileWriter writer = new FileWriter(pathAndName);
+            for (String line: data) {
+                writer.write(line+"\n");
+            }
+        } catch (IOException e){
+            System.out.println("An error occured");
+        }
+    }
+
+    /**
+     *
+     * TODO refactor data to fit SVM planned data point structure (Number, #LOCDiff, Cyclomatic Complexity, #Asserts)
+     * NOTE MAY BE MOVED TO SEPARATE FILE
+     */
+    private static void refactorData(){
+    }
+
 
 
     public static void main(String[] args) throws GitAPIException, IOException {
