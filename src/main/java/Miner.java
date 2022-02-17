@@ -3,11 +3,13 @@
 
 import java.io.*;
 
-import java.util.ArrayList;
-import java.util.Date;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.*;
 
-import java.util.List;
-import java.util.Map;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.eclipse.jgit.api.Git;
@@ -242,17 +244,82 @@ public class Miner {
     }
 
 
+    private static long getOccurences(String pattern, String test){
+
+        Pattern locPat = Pattern.compile(pattern);
+        Matcher loc = locPat.matcher(test);
+
+        return  loc.results().count();
+    }
+
+    private static String getName(String pattern, String test){
+        Pattern namePat = Pattern.compile(pattern);
+        Matcher name = namePat.matcher(test);
+
+        return name.group(1);
+    }
+
+    private static String getFunctionName(String test){
+        Pattern namePat = Pattern.compile("\\(");
+        String name = namePat.split(test)[0];
+        String[] newName = name.split("\\s");
+
+        return newName[newName.length-1];
+    }
+
+
+
+    /**
+     * Regex to get all test files (?=@Test[^{]+\{)((?:(?=.*?\{(?!.*?\2)(.*}(?!.*\3).*))(?=.*?}(?!.*?\3)(.*)).)+?.*?(?=\2)[^{]*(?=\3$)) using backtracking
+     *
+     */
+    private static void parseOutTests() throws IOException {
+        try{
+            f.close();
+          //  String content = Files.readString(Paths.get("output/" + OUTPUTPATH + "/diff.txt"));
+
+            File file = new File("output/" + OUTPUTPATH + "/diff2.txt");
+            Scanner scan = new Scanner(file);
+            scan.useDelimiter("\\Z");
+            String content = scan.next();
+            content = content.replaceAll("\n", "-.-");
+            Pattern testMethodPattern = Pattern.compile("(?=@Test[^{]+[{])((?:(?=.*?[{](?!.*?\\2)(.*}(?!.*\\3).*))(?=.*?}(?!.*?\\3)(.*)).)+?.*?(?=\\2)[^{]*(?=\\3$))", Pattern.MULTILINE );
+            Matcher m = testMethodPattern.matcher(content);
+            new File("output/" + OUTPUTPATH + "/tests.txt");
+            FileWriter writer = new FileWriter("output/" + OUTPUTPATH + "/tests.txt");
+            writer.write("Function names | Lines of code | #assertions\n");
+            while(m.find()){
+                String test = m.group(1);
+                String getFunctionName = getFunctionName(test);
+                test = m.group(1).replaceAll("-.-","\n");
+                long asserts = getOccurences("(assert|verify)",test);
+                long loc = getOccurences("\n",test);
+
+                writer.write(getFunctionName + " " + loc + " " + asserts + "\n");
+            }
+            writer.close();
+
+        } catch(FileNotFoundException e){
+            System.out.println("error occured");
+        }
+
+
+
+    }
+
 
     public static void main(String[] args) throws GitAPIException, IOException {
         try{
             makeDirectory();
             getRepo(URLTOREPO);
+
         } catch (JGitInternalException e){
             System.out.println("Repo is already stored");
         } finally {
-            walk();
-            writeToFile("output/"+OUTPUTPATH+"/full.txt",fullData);
-            writeToFile("output/"+OUTPUTPATH+"/hash.txt",hashValues);
+            //walk();
+            parseOutTests();
+           // writeToFile("output/"+OUTPUTPATH+"/full.txt",fullData);
+           // writeToFile("output/"+OUTPUTPATH+"/hash.txt",hashValues);
         }
 
 
