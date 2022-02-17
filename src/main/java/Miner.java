@@ -2,11 +2,6 @@
 
 
 import java.io.*;
-
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 
 import java.util.regex.Matcher;
@@ -34,7 +29,7 @@ import org.eclipse.jgit.treewalk.filter.TreeFilter;
 
 /**
  * Algorithm to mine GIT Commit histories using JGit
- *
+ * TODO make a input txt and -runAll flag for input
  * @author Anders Renström
  */
 public class Miner {
@@ -47,19 +42,14 @@ public class Miner {
 
 
 
-    final static String REPODIRECTORY       = "gitRepos/repos/java-design-patterns"; // Directory in which all repos are saved
-    final static String PATHGITDIRECTORY    = REPODIRECTORY+"/.git"; // Local directory to git repo
-    final static String URLTOREPO           = "https://github.com/iluwatar/java-design-patterns.git"; // URL to repo
-    final static String OUTPUTPATH          =  "java-design-patterns";
+    static String REPODIRECTORY       = "gitRepos/repos/"; // Directory in which all repos are saved
+    static String PATHGITDIRECTORY    = REPODIRECTORY+"/.git"; // Local directory to git repo
+    static String URLTOREPO           = "https://github.com/iluwatar/java-design-patterns.git"; // URL to repo
+    static String OUTPUTPATH          =  "java-design-patterns";
+
     static FileOutputStream f;
 
-    static {
-        try {
-             f = new FileOutputStream(new File("output/"+OUTPUTPATH+"/diff.txt"));
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        }
-    }
+
 
 
     // Pattern to find the correct commits
@@ -278,7 +268,7 @@ public class Miner {
             f.close();
           //  String content = Files.readString(Paths.get("output/" + OUTPUTPATH + "/diff.txt"));
 
-            File file = new File("output/" + OUTPUTPATH + "/diff2.txt");
+            File file = new File("output/" + OUTPUTPATH + "/diff.txt");
             Scanner scan = new Scanner(file);
             scan.useDelimiter("\\Z");
             String content = scan.next();
@@ -303,26 +293,126 @@ public class Miner {
             System.out.println("error occured");
         }
 
+    }
+
+    private static void setupVariables(String name, String url){
+        REPODIRECTORY =  "gitRepos/repos/"+name;
+        URLTOREPO = url;
+        PATHGITDIRECTORY = REPODIRECTORY+"/.git";
+        OUTPUTPATH = name;
+
+        try {
+            f = new FileOutputStream(new File("output/"+OUTPUTPATH+"/diff.txt"));
+        } catch (FileNotFoundException e) {
+                e.printStackTrace();
+        }
 
 
     }
 
+    private static void printRepos(ArrayList<String> names, boolean[] checkMarks){
+        for (int i = 0; i < names.size(); i++) {
+            String output;
+            if(checkMarks[i]){
+                output = "[✓]";
+            } else{
+                output = "[]";
+            }
+            System.out.println(i + " " + output + " " + names.get(i));
+        }
+    }
 
-    public static void main(String[] args) throws GitAPIException, IOException {
+    private static void setup(){
+        System.out.println("Hello and Welcome to the JGIT Miner\n Please select which repos you would like to mine for test files: ");
+        File f = new File("input.txt");
+        try{
+            String line;
+            ArrayList<String> names = new ArrayList<>();
+            ArrayList<String> urls = new ArrayList<>();
+            BufferedReader reader =
+                    new BufferedReader(new FileReader("input.txt"));
+            System.out.println("Hello and Welcome to the JGIT Miner\n Please select which repos you would like to mine for test files: ");
+            while (( line = reader.readLine()) != null) {
+
+                // row[0] = name, row[1] = http link
+                String[] row = line.split("\\s");
+                names.add(row[0]);
+                urls.add(row[1]);
+            }
+            reader.close();
+            boolean[] checkMarks = new boolean[names.size()];
+            boolean start = false;
+
+            System.out.println("Please choose which repos you would like to mine");
+            while(!start){
+                BufferedReader inp = new BufferedReader (new InputStreamReader(System.in));
+                printRepos(names,checkMarks);
+                System.out.println("Please choose which repos you would like to mine, write \"-1\" to start");
+                String str = inp.readLine();
+                if(str.equals("-1")){
+                    start = true;
+                } else {
+                    int check = 0;
+                    try{
+                        check = Integer.parseInt(str);
+                    } catch(NumberFormatException e){
+                        System.out.println("Please enter a valid number");
+                        continue;
+                    }
+                    if (check >= 0 && check< checkMarks.length ){
+                        checkMarks[check] = !checkMarks[check];
+                    } else{
+                        System.out.println("Out of range");
+                    }
+
+                }
+
+            }
+            System.out.println("Setup done");
+            for (int i = 0; i < names.size(); i++) {
+                if(checkMarks[i]) {
+                    System.out.println("Running repo : " + names.get(i));
+                    setupVariables(names.get(i), urls.get(i));
+                    run();
+                }
+            }
+
+
+        } catch(FileNotFoundException e ) {
+            System.err.println("File does not exist ");
+            System.err.println("In order to run the program an input.txt in the top repo folder must be added consisting of\"repo name\" \"http link \" \n example : jgit-miner https://github.com/Renstrom/jgit-miner.git ");
+            System.exit(1);
+        } catch (IOException e){
+            System.err.println("Structure of the code is not valid");
+            System.err.println("In order to run the program an input.txt in the top repo folder must be added consisting of\"repo name\" \"http link \" \n example : jgit-miner https://github.com/Renstrom/jgit-miner.git ");
+            System.exit(1);
+
+        } catch (GitAPIException e) {
+            e.printStackTrace();
+        }
+
+
+    }
+
+    private static void run() throws IOException, GitAPIException {
+        makeDirectory();
         try{
             makeDirectory();
             getRepo(URLTOREPO);
 
-        } catch (JGitInternalException e){
+        } catch (JGitInternalException | GitAPIException e){
             System.out.println("Repo is already stored");
         } finally {
-            //walk();
+            walk();
+            System.out.println("Parsing out results");
             parseOutTests();
-           // writeToFile("output/"+OUTPUTPATH+"/full.txt",fullData);
-           // writeToFile("output/"+OUTPUTPATH+"/hash.txt",hashValues);
+            System.out.println("Saving full information output/"+OUTPUTPATH+"/full.txt");
+            writeToFile("output/"+OUTPUTPATH+"/full.txt",fullData);
+            System.out.println("Saving hashID information output/"+OUTPUTPATH+"/full.txt");
+            writeToFile("output/"+OUTPUTPATH+"/hash.txt",hashValues);
         }
-
-
-
+    }
+    public static void main(String[] args) throws GitAPIException, IOException {
+            setup();
     }
 }

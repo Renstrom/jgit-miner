@@ -1,0 +1,10 @@
+java-design-patterns https://github.com/iluwatar/java-design-patterns.git
+newPipe https://github.com/TeamNewPipe/NewPipe.git
+spring-boot https://github.com/spring-projects/spring-boot.git
+spring-projects https://github.com/spring-projects/spring-framework.git
+RxJava https://github.com/ReactiveX/RxJava.git
+retrofit https://github.com/square/retrofit.git
+MPAndroidChart https://github.com/PhilJay/MPAndroidChart.git
+glide https://github.com/bumptech/glide.git
+spring-framework https://github.com/spring-projects/spring-framework.git
+lottie-airbnb https://github.com/airbnb/lottie-android.git
