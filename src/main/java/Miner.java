@@ -148,7 +148,8 @@ public class Miner {
             DiffFormatter formatter = new DiffFormatter(f) ;
             formatter.setRepository(repo);
             formatter.format(entry);
-            formatter.toFileHeader(entry).toEditList();
+            formatter.toFileHeader(entry).getForwardBinaryHunk();
+
         }
 
     }
@@ -270,22 +271,27 @@ public class Miner {
 
             File file = new File("output/" + OUTPUTPATH + "/diff.txt");
             Scanner scan = new Scanner(file);
-            scan.useDelimiter("\\Z");
-            String content = scan.next();
-            content = content.replaceAll("\n", "-.-");
-            Pattern testMethodPattern = Pattern.compile("(?=@Test[^{]+[{])((?:(?=.*?[{](?!.*?\\2)(.*}(?!.*\\3).*))(?=.*?}(?!.*?\\3)(.*)).)+?.*?(?=\\2)[^{]*(?=\\3$))", Pattern.MULTILINE );
-            Matcher m = testMethodPattern.matcher(content);
+
+            scan.useDelimiter("@");
+
             new File("output/" + OUTPUTPATH + "/tests.txt");
             FileWriter writer = new FileWriter("output/" + OUTPUTPATH + "/tests.txt");
             writer.write("Function names | Lines of code | #assertions\n");
-            while(m.find()){
-                String test = m.group(1);
-                String getFunctionName = getFunctionName(test);
-                test = m.group(1).replaceAll("-.-","\n");
-                long asserts = getOccurences("(assert|verify)",test);
-                long loc = getOccurences("\n",test);
+            while(scan.hasNext()) {
+                String content = scan.next();
+                content = content.replaceAll("\n", "-.-");
+                Pattern testMethodPattern = Pattern.compile("(?=Test[^{]+[{])((?:(?=.*?[{](?!.*?\\2)(.*}(?!.*\\3).*))(?=.*?}(?!.*?\\3)(.*)).)+?.*?(?=\\2)[^{]*(?=\\3$))", Pattern.MULTILINE);
+                Matcher m = testMethodPattern.matcher(content);
 
-                writer.write(getFunctionName + " " + loc + " " + asserts + "\n");
+
+                while (m.find()) {
+                    String test = m.group(1);
+                    String getFunctionName = getFunctionName(test);
+                    test = m.group(1).replaceAll("-.-", "\n");
+                    long asserts = getOccurences("(assert|verify)", test);
+                    long loc = getOccurences("\n", test);
+                    writer.write(getFunctionName + " " + loc + " " + asserts + "\n");
+                }
             }
             writer.close();
 
