@@ -1,9 +1,7 @@
 
 
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -28,6 +26,8 @@ import org.eclipse.jgit.revwalk.RevTree;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.AbstractTreeIterator;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
+import org.eclipse.jgit.treewalk.filter.PathSuffixFilter;
+import org.eclipse.jgit.treewalk.filter.TreeFilter;
 
 
 /**
@@ -43,15 +43,33 @@ public class Miner {
     static ArrayList<String> refactoredData = new ArrayList<>(); // NOTE May be temporary
 
 
-    final static String REPODIRECTORY       = "gitRepos/repos"; // Directory in which all repos are saved
+
+
+    final static String REPODIRECTORY       = "gitRepos/repos/java-design-patterns"; // Directory in which all repos are saved
     final static String PATHGITDIRECTORY    = REPODIRECTORY+"/.git"; // Local directory to git repo
-    final static String URLTOREPO           = "https://github.com/Renstrom/act.git"; // URL to repo
-    final static String OUTPUTPATH          =  URLTOREPO.split("/.*\\.git$")[1];
+    final static String URLTOREPO           = "https://github.com/iluwatar/java-design-patterns.git"; // URL to repo
+    final static String OUTPUTPATH          =  "java-design-patterns";
+    static FileOutputStream f;
+
+    static {
+        try {
+             f = new FileOutputStream(new File("output/"+OUTPUTPATH+"/diff.txt"));
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
+    }
 
 
     // Pattern to find the correct commits
     final static Pattern COMMITPATTERN = Pattern.compile(
-            "((refact(or|ing|red))test?(s|ing))|(updat(e|ing|es)test?(s|ing))|test", Pattern.CASE_INSENSITIVE);
+            "(refact(or|ing|red))|(updat(e|ing|es))", Pattern.CASE_INSENSITIVE);
+
+    final static Pattern COMMITPATTERN2 = Pattern.compile(
+            "test|test(s|er|ing|ed)", Pattern.CASE_INSENSITIVE);
+
+    public Miner() throws FileNotFoundException {
+    }
+
     /**
      * Walk function that generates all the commits that exists, output the ones that fulfills the filter options
      */
@@ -100,11 +118,16 @@ public class Miner {
                         matched = false;
                     }
                     newHashID = commit.getName();
-                    if(COMMITPATTERN.matcher(commit.getFullMessage()).find()){
-                        System.out.println(commit.getName());
-                        System.out.println(commit.getAuthorIdent().getName());
-                        System.out.println(new Date(commit.getCommitTime() * 1000L)); // Parsing to the correct date
-                        System.out.println(commit.getFullMessage());
+                    if(COMMITPATTERN.matcher(commit.getFullMessage()).find() && COMMITPATTERN2.matcher(commit.getFullMessage()).find()){
+                        String name         = commit.getName();
+                        String author       = commit.getAuthorIdent().getName();
+                        String date         = (new Date(commit.getCommitTime() * 1000L)).toString();
+                        String fullMessage  = commit.getShortMessage();
+                        fullData.add("Name         : "+ name);
+                        fullData.add("Author       : " +author);
+                        fullData.add("Date         : " +date);
+                        fullData.add("Full message : " +fullMessage);
+                        hashValues.add(name);
                         matched = true;
                     }
                 }
@@ -119,16 +142,22 @@ public class Miner {
      * @param newCommit New Commit tree iterator
      */
     private static void gitDiff(Repository repo, AbstractTreeIterator oldCommit, AbstractTreeIterator newCommit) throws GitAPIException, IOException {
+        TreeFilter treeFilter = PathSuffixFilter.create(".java");
         Git git = new Git(repo) ;
-            List<DiffEntry> diff = git.diff().
+        List<DiffEntry> diff = git.diff().
                     setOldTree(oldCommit).
                     setNewTree(newCommit).
+                    setPathFilter(treeFilter).
+                    setShowNameAndStatusOnly(true).
                     call();
-            for (DiffEntry entry : diff) {
-                DiffFormatter formatter = new DiffFormatter(System.out) ;
-                formatter.setRepository(repo);
-                formatter.format(entry);
-            }
+        for (DiffEntry entry : diff) {
+
+
+            DiffFormatter formatter = new DiffFormatter(f) ;
+            formatter.setRepository(repo);
+            formatter.format(entry);
+            formatter.toFileHeader(entry).toEditList();
+        }
 
     }
 
@@ -158,6 +187,7 @@ public class Miner {
      * @throws JGitInternalException Makes sure that the repo isn't already cloned
      */
     private static void getRepo(String url) throws GitAPIException, JGitInternalException {
+        System.out.println("Cloning repo " +  url);
         Git.cloneRepository()
                 .setURI(url)
                 .setDirectory(new File(REPODIRECTORY))
@@ -169,7 +199,14 @@ public class Miner {
      * Creates a directory for the corresponding repository, if folder gets created the output will be
      */
     private static void makeDirectory(){
-        System.out.println( (new File("output/"+OUTPUTPATH).mkdir() ) ? "Folder Created"  : "Folder Already Created");
+        System.out.println("output/"+OUTPUTPATH);
+        new File("output").mkdir();
+        File f = new File("output/"+OUTPUTPATH);
+        if(f.mkdir()){
+            System.out.println(f.getName() + " folder was created");
+        } else{
+            System.out.println(f.getName() + " folder was already created");
+        }
     }
 
 
@@ -179,16 +216,22 @@ public class Miner {
      * @param data Data recorded
      */
     private static void writeToFile(String pathAndName, ArrayList<String> data){
-        File dataFile = new File(pathAndName);
+        new File(pathAndName);
         try{
             FileWriter writer = new FileWriter(pathAndName);
             for (String line: data) {
                 writer.write(line+"\n");
+
             }
+            writer.close();
         } catch (IOException e){
             System.out.println("An error occured");
         }
     }
+
+
+
+
 
     /**
      *
@@ -202,11 +245,16 @@ public class Miner {
 
     public static void main(String[] args) throws GitAPIException, IOException {
         try{
+            makeDirectory();
             getRepo(URLTOREPO);
         } catch (JGitInternalException e){
             System.out.println("Repo is already stored");
+        } finally {
+            walk();
+            writeToFile("output/"+OUTPUTPATH+"/full.txt",fullData);
+            writeToFile("output/"+OUTPUTPATH+"/hash.txt",hashValues);
         }
-        walk();
+
 
 
     }
