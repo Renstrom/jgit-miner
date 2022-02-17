@@ -29,7 +29,6 @@ import org.eclipse.jgit.treewalk.filter.TreeFilter;
 
 /**
  * Algorithm to mine GIT Commit histories using JGit
- * TODO make a input txt and -runAll flag for input
  * @author Anders Renström
  */
 public class Miner {
@@ -66,6 +65,7 @@ public class Miner {
      * Walk function that generates all the commits that exists, output the ones that fulfills the filter options
      */
     public static void walk() throws IOException, GitAPIException {
+        long nrOfCommits = 0;
         String oldHashID;
         String newHashID    = "";
         boolean matched     = false; // Used to print the correct git diff
@@ -84,7 +84,15 @@ public class Miner {
             Iterable<RevCommit> commits = git.log().all().call();
 
             for (RevCommit commit : commits) {
+                nrOfCommits++;
+                if(nrOfCommits%1000==0){
+                    System.out.println(nrOfCommits+" commits checked so far");
+                }
+                if(!COMMITPATTERN.matcher(commit.getFullMessage()).find() || !COMMITPATTERN2.matcher(commit.getFullMessage()).find()){
+                    continue;
+                }
                 boolean foundInThisBranch = false;
+
 
                 RevCommit targetCommit = walk.parseCommit(repo.resolve(
                         commit.getName()));
@@ -99,6 +107,7 @@ public class Miner {
                             }
                         }
                     }
+
                 }
 
                 if (foundInThisBranch) {
@@ -149,7 +158,6 @@ public class Miner {
             formatter.setRepository(repo);
             formatter.format(entry);
             formatter.toFileHeader(entry).getForwardBinaryHunk();
-
         }
 
     }
@@ -350,8 +358,9 @@ public class Miner {
             boolean start = false;
 
             System.out.println("Please choose which repos you would like to mine");
+            BufferedReader inp = new BufferedReader (new InputStreamReader(System.in));
             while(!start){
-                BufferedReader inp = new BufferedReader (new InputStreamReader(System.in));
+
                 printRepos(names,checkMarks);
                 System.out.println("Please choose which repos you would like to mine, write \"-1\" to start");
                 String str = inp.readLine();
@@ -374,6 +383,7 @@ public class Miner {
                 }
 
             }
+            inp.close();
             System.out.println("Setup done");
             for (int i = 0; i < names.size(); i++) {
                 if(checkMarks[i]) {
@@ -416,6 +426,8 @@ public class Miner {
             writeToFile("output/"+OUTPUTPATH+"/full.txt",fullData);
             System.out.println("Saving hashID information output/"+OUTPUTPATH+"/full.txt");
             writeToFile("output/"+OUTPUTPATH+"/hash.txt",hashValues);
+            System.out.println("Repo data done");
+
         }
     }
     public static void main(String[] args) throws GitAPIException, IOException {
