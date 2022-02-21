@@ -2,6 +2,7 @@
 
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 import java.util.regex.Matcher;
@@ -21,6 +22,8 @@ import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevTree;
 import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.revwalk.filter.MessageRevFilter;
+import org.eclipse.jgit.revwalk.filter.RevFilter;
 import org.eclipse.jgit.treewalk.AbstractTreeIterator;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.treewalk.filter.PathSuffixFilter;
@@ -53,13 +56,11 @@ public class Miner {
 
     // Pattern to find the correct commits
     final static Pattern COMMITPATTERN = Pattern.compile(
-            "(refact(or|ing|red))|(updat(e|ing|es))", Pattern.CASE_INSENSITIVE);
+            "((refact(or|ing|ored)\\s)|(\\supdat(e|ing|es)\\s)).*(test|\\stest(s|er|ing|ed)\\s)", Pattern.CASE_INSENSITIVE);
 
     final static Pattern COMMITPATTERN2 = Pattern.compile(
-            "test|test(s|er|ing|ed)", Pattern.CASE_INSENSITIVE);
+            "((\\srefact(or|ing|red)\\s)|(\\supdat(e|ing|es)\\s*))(test|\\stest(s|er|ing|ed)\\s)", Pattern.CASE_INSENSITIVE);
 
-    public Miner() throws FileNotFoundException {
-    }
 
     /**
      * Walk function that generates all the commits that exists, output the ones that fulfills the filter options
@@ -73,6 +74,9 @@ public class Miner {
         Repository repo     = new FileRepository(PATHGITDIRECTORY);
         Git git             = new Git(repo);
         RevWalk walk        = new RevWalk(repo);
+        RevFilter revFilter = MessageRevFilter.create("RuntimeException");
+        walk.setRevFilter(revFilter);
+
         List<Ref> branches  = git.branchList().call();
 
         for (Ref branch : branches) { // Iterating over all branches
@@ -88,7 +92,7 @@ public class Miner {
                 if(nrOfCommits%1000==0){
                     System.out.println(nrOfCommits+" commits checked so far");
                 }
-                if(!COMMITPATTERN.matcher(commit.getFullMessage()).find() || !COMMITPATTERN2.matcher(commit.getFullMessage()).find()){
+                if(!COMMITPATTERN.matcher(commit.getFullMessage()).find() ){
                     continue;
                 }
                 boolean foundInThisBranch = false;
@@ -119,7 +123,7 @@ public class Miner {
                         matched = false;
                     }
                     newHashID = commit.getName();
-                    if(COMMITPATTERN.matcher(commit.getFullMessage()).find() && COMMITPATTERN2.matcher(commit.getFullMessage()).find()){
+                    if(COMMITPATTERN.matcher(commit.getFullMessage()).find()){
                         String name         = commit.getName();
                         String author       = commit.getAuthorIdent().getName();
                         String date         = (new Date(commit.getCommitTime() * 1000L)).toString();
@@ -136,6 +140,36 @@ public class Miner {
     }
     }
 
+
+    private static boolean filterOutput(String input){
+        int y = 0;
+
+        for (String line: input.split("@@@")) {
+            if(y == 0){
+                y++;
+                continue;
+            }
+            if(line.startsWith("+")){
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+
+    private static void parseBody(String x, Pattern p ) throws IOException {
+        Matcher m = p.matcher(x);
+        while (m.find()) {
+
+            String content = m.group(1);
+            boolean b = filterOutput(content);
+            if (!b)
+                f.write((content.replaceAll("@@@", "\n") + "\n").getBytes(StandardCharsets.UTF_8));
+
+        }
+    }
+    static ByteArrayOutputStream out = new ByteArrayOutputStream();
     /**
      * Generates the git diffs for each commit.
      * @param repo Repository analysing
@@ -143,7 +177,10 @@ public class Miner {
      * @param newCommit New Commit tree iterator
      */
     private static void gitDiff(Repository repo, AbstractTreeIterator oldCommit, AbstractTreeIterator newCommit) throws GitAPIException, IOException {
+        Pattern delimiter = Pattern.compile("(?=@Test[^{]+[{])((?:(?=.*?[{](?!.*?\\2)(.*}(?!.*\\3).*))(?=.*?}(?!.*?\\3)(.*)).)+?.*?(?=\\2)[^{]*(?=\\3$))");
+        DiffFormatter formatter = new DiffFormatter(out) ;
         TreeFilter treeFilter = PathSuffixFilter.create(".java");
+
         Git git = new Git(repo) ;
         List<DiffEntry> diff = git.diff().
                     setOldTree(oldCommit).
@@ -154,13 +191,36 @@ public class Miner {
         for (DiffEntry entry : diff) {
 
 
-            DiffFormatter formatter = new DiffFormatter(f) ;
             formatter.setRepository(repo);
             formatter.format(entry);
-            formatter.toFileHeader(entry).getForwardBinaryHunk();
+            formatter.setPathFilter(TreeFilter.ANY_DIFF);
+            formatter.toFileHeader(entry);
+            String x = out.toString(StandardCharsets.UTF_8);
+
+
+            x = x.replaceAll("\n", "@@@");
+
+            if( 100000>x.length()){
+                parseBody(x,delimiter);
+            } else{
+                System.out.println(x.length());
+                parseBody(x.substring(0,x.length()>>2),delimiter);
+                parseBody(x.substring(x.length()>>2,x.length()>>1),delimiter);
+                parseBody(x.substring(x.length()>>1,(x.length()*3)>>2),delimiter);
+
+                parseBody(x.substring((x.length()*3)>>2),delimiter);
+
+            }
+
+            out.reset();
         }
+        //out.close();
 
     }
+
+
+
+
 
     /**
      * Gathers the Abstracttreeiterator to get the git diffs from each commit.
@@ -173,11 +233,12 @@ public class Miner {
         RevWalk walk        = new RevWalk(repository);
         RevCommit commit    = walk.parseCommit(ObjectId.fromString(objectId));
         RevTree tree        = walk.parseTree(commit.getTree().getId());
-
         CanonicalTreeParser treeParser  = new CanonicalTreeParser();
         ObjectReader        reader      = repository.newObjectReader();
         treeParser.reset(reader, tree.getId());
         walk.dispose();
+
+
 
         return treeParser;
     }
@@ -201,7 +262,6 @@ public class Miner {
      */
     private static void makeDirectory(){
         System.out.println("output/"+OUTPUTPATH);
-        new File("output").mkdir();
         File f = new File("output/"+OUTPUTPATH);
         if(f.mkdir()){
             System.out.println(f.getName() + " folder was created");
@@ -276,30 +336,34 @@ public class Miner {
         try{
             f.close();
           //  String content = Files.readString(Paths.get("output/" + OUTPUTPATH + "/diff.txt"));
-
             File file = new File("output/" + OUTPUTPATH + "/diff.txt");
             Scanner scan = new Scanner(file);
-
-            scan.useDelimiter("@");
-
+            new File("output/" + OUTPUTPATH + "/tests.txt");
             new File("output/" + OUTPUTPATH + "/tests.txt");
             FileWriter writer = new FileWriter("output/" + OUTPUTPATH + "/tests.txt");
+
             writer.write("Function names | Lines of code | #assertions\n");
+            Pattern testMethodPattern = Pattern.compile("(?=@Test[^{]+[{])((?:(?=.*?[{](?!.*?\\2)(.*}(?!.*\\3).*))(?=.*?}(?!.*?\\3)(.*)).)+?.*?(?=\\2)[^{]*(?=\\3$))", Pattern.MULTILINE);
+            Pattern delimiter = Pattern.compile("(?=(?=@Test[^{]+[{])((?:(?=.*?[{](?!.*?\\2)(.*}(?!.*\\3).*))(?=.*?}(?!.*?\\3)(.*)).)+?.*?(?=\\2)[^{]*(?=\\3$)))");
+            scan.useDelimiter(delimiter);
+       //     Pattern testMethodPattern2 = Pattern.compile("@Test\\s*@@@@-");
             while(scan.hasNext()) {
                 String content = scan.next();
-                content = content.replaceAll("\n", "-.-");
-                Pattern testMethodPattern = Pattern.compile("(?=Test[^{]+[{])((?:(?=.*?[{](?!.*?\\2)(.*}(?!.*\\3).*))(?=.*?}(?!.*?\\3)(.*)).)+?.*?(?=\\2)[^{]*(?=\\3$))", Pattern.MULTILINE);
+
                 Matcher m = testMethodPattern.matcher(content);
 
-
                 while (m.find()) {
+
                     String test = m.group(1);
-                    String getFunctionName = getFunctionName(test);
-                    test = m.group(1).replaceAll("-.-", "\n");
+                    System.out.println(test);
+
+
                     long asserts = getOccurences("(assert|verify)", test);
                     long loc = getOccurences("\n", test);
+                    String getFunctionName = getFunctionName(test);
                     writer.write(getFunctionName + " " + loc + " " + asserts + "\n");
                 }
+
             }
             writer.close();
 
@@ -308,6 +372,10 @@ public class Miner {
         }
 
     }
+
+
+
+
 
     private static void setupVariables(String name, String url){
         REPODIRECTORY =  "gitRepos/repos/"+name;
@@ -332,7 +400,7 @@ public class Miner {
             } else{
                 output = "[]";
             }
-            System.out.println(i + " " + output + " " + names.get(i));
+            System.out.printf("%s %s %s%n", i, output, names.get(i));
         }
     }
 
@@ -420,11 +488,11 @@ public class Miner {
             System.out.println("Repo is already stored");
         } finally {
             walk();
-            System.out.println("Parsing out results");
+
+            System.out.println("Trying to parse out tests");
             parseOutTests();
-            System.out.println("Saving full information output/"+OUTPUTPATH+"/full.txt");
             writeToFile("output/"+OUTPUTPATH+"/full.txt",fullData);
-            System.out.println("Saving hashID information output/"+OUTPUTPATH+"/full.txt");
+            System.out.printf("Saving hashID information output/%s/full.txt%n", OUTPUTPATH);
             writeToFile("output/"+OUTPUTPATH+"/hash.txt",hashValues);
             System.out.println("Repo data done");
 
