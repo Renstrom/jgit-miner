@@ -48,6 +48,7 @@ public class Miner {
     static String PATHGITDIRECTORY    = REPODIRECTORY+"/.git"; // Local directory to git repo
     static String URLTOREPO           = "https://github.com/iluwatar/java-design-patterns.git"; // URL to repo
     static String OUTPUTPATH          =  "java-design-patterns";
+    static int nrOfTests              = 0;
 
     static FileOutputStream f;
 
@@ -164,8 +165,10 @@ public class Miner {
 
             String content = m.group(1);
             boolean b = filterOutput(content);
-            if (!b)
-                f.write((content.replaceAll("@@@", "\n") + "\n").getBytes(StandardCharsets.UTF_8));
+            if (!b){
+                nrOfTests++;
+                f.write((content+"\n").getBytes(StandardCharsets.UTF_8));
+            }
 
         }
     }
@@ -203,7 +206,6 @@ public class Miner {
             if( 100000>x.length()){
                 parseBody(x,delimiter);
             } else{
-                System.out.println(x.length());
                 parseBody(x.substring(0,x.length()>>2),delimiter);
                 parseBody(x.substring(x.length()>>2,x.length()>>1),delimiter);
                 parseBody(x.substring(x.length()>>1,(x.length()*3)>>2),delimiter);
@@ -341,27 +343,15 @@ public class Miner {
             new File("output/" + OUTPUTPATH + "/tests.txt");
             new File("output/" + OUTPUTPATH + "/tests.txt");
             FileWriter writer = new FileWriter("output/" + OUTPUTPATH + "/tests.txt");
-
             writer.write("Function names | Lines of code | #assertions\n");
-            Pattern testMethodPattern = Pattern.compile("(?=@Test[^{]+[{])((?:(?=.*?[{](?!.*?\\2)(.*}(?!.*\\3).*))(?=.*?}(?!.*?\\3)(.*)).)+?.*?(?=\\2)[^{]*(?=\\3$))", Pattern.MULTILINE);
-            Pattern delimiter = Pattern.compile("(?=(?=@Test[^{]+[{])((?:(?=.*?[{](?!.*?\\2)(.*}(?!.*\\3).*))(?=.*?}(?!.*?\\3)(.*)).)+?.*?(?=\\2)[^{]*(?=\\3$)))");
-            scan.useDelimiter(delimiter);
-       //     Pattern testMethodPattern2 = Pattern.compile("@Test\\s*@@@@-");
-            while(scan.hasNext()) {
-                String content = scan.next();
-
-                Matcher m = testMethodPattern.matcher(content);
-
-                while (m.find()) {
-
-                    String test = m.group(1);
-                    System.out.println(test);
-
-
+            while(scan.hasNextLine()) {
+                String test= scan.nextLine();
+                if(!test.equals("") && !test.contains("@Ignore")) {
                     long asserts = getOccurences("(assert|verify)", test);
-                    long loc = getOccurences("\n", test);
+                    long loc = getOccurences("@@@", test);
                     String getFunctionName = getFunctionName(test);
-                    writer.write(getFunctionName + " " + loc + " " + asserts + "\n");
+
+                    writer.write(getFunctionName + " " + loc + " " + asserts+"\n");
                 }
 
             }
@@ -406,7 +396,6 @@ public class Miner {
 
     private static void setup(){
         System.out.println("Hello and Welcome to the JGIT Miner\n Please select which repos you would like to mine for test files: ");
-        File f = new File("input.txt");
         try{
             String line;
             ArrayList<String> names = new ArrayList<>();
@@ -488,7 +477,7 @@ public class Miner {
             System.out.println("Repo is already stored");
         } finally {
             walk();
-
+            System.out.println(nrOfTests + " tests accumulated");
             System.out.println("Trying to parse out tests");
             parseOutTests();
             writeToFile("output/"+OUTPUTPATH+"/full.txt",fullData);
