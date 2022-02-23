@@ -14,11 +14,7 @@ import org.eclipse.jgit.api.errors.JGitInternalException;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
 import org.eclipse.jgit.internal.storage.file.FileRepository;
-import org.eclipse.jgit.lib.Constants;
-import org.eclipse.jgit.lib.ObjectId;
-import org.eclipse.jgit.lib.ObjectReader;
-import org.eclipse.jgit.lib.Ref;
-import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.lib.*;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevTree;
 import org.eclipse.jgit.revwalk.RevWalk;
@@ -49,6 +45,8 @@ public class Miner {
     static String URLTOREPO           = "https://github.com/iluwatar/java-design-patterns.git"; // URL to repo
     static String OUTPUTPATH          =  "java-design-patterns";
     static int nrOfTests              = 0;
+    static int[] numberOfAsserts      = new int[200];
+    static HashMap<Integer, Integer> numberOfLoc = new HashMap<>(200);
 
     static FileOutputStream f;
 
@@ -57,11 +55,16 @@ public class Miner {
 
     // Pattern to find the correct commits
     final static Pattern COMMITPATTERN = Pattern.compile(
-            "((refact(or|ing|ored)\\s)|(\\supdat(e|ing|es)\\s)).*(test|\\stest(s|er|ing|ed)\\s)", Pattern.CASE_INSENSITIVE);
+            "((remov(e|ed|ing))|(refact(or|ing|ored)\\s)|(\\supdat(e|ing|es)\\s)).*(test|\\stest(s|er|ing|ed)\\s)", Pattern.CASE_INSENSITIVE);
 
-    final static Pattern COMMITPATTERN2 = Pattern.compile(
-            "((\\srefact(or|ing|red)\\s)|(\\supdat(e|ing|es)\\s*))(test|\\stest(s|er|ing|ed)\\s)", Pattern.CASE_INSENSITIVE);
 
+    private static boolean match(String message){
+        for (String s: message.split("\n")) {
+            if(COMMITPATTERN.matcher(s).find())
+                return true;
+        }
+        return false;
+    }
 
     /**
      * Walk function that generates all the commits that exists, output the ones that fulfills the filter options
@@ -120,11 +123,11 @@ public class Miner {
                         oldHashID = commit.getName();
                         AbstractTreeIterator oldCommit = prepareTreeParser(repo, oldHashID);
                         AbstractTreeIterator newCommit = prepareTreeParser(repo, newHashID);
-                        gitDiff(repo,oldCommit,newCommit);
+                        gitDiff(repo,oldCommit,newCommit, commit);
                         matched = false;
                     }
                     newHashID = commit.getName();
-                    if(COMMITPATTERN.matcher(commit.getFullMessage()).find()){
+                    if(match(commit.getFullMessage())){
                         String name         = commit.getName();
                         String author       = commit.getAuthorIdent().getName();
                         String date         = (new Date(commit.getCommitTime() * 1000L)).toString();
@@ -158,16 +161,43 @@ public class Miner {
     }
 
 
-
-    private static void parseBody(String x, Pattern p ) throws IOException {
+    /**
+     * Simple writer to save data
+     * @param x Function that was being used
+     * @param p Pattern to parse out data
+     * @param message Information of the new message
+     * @throws IOException
+     */
+    private static void parseBody(String x, Pattern p, byte[] message, byte[] hashID) throws IOException {
         Matcher m = p.matcher(x);
+
         while (m.find()) {
 
             String content = m.group(1);
+
             boolean b = filterOutput(content);
             if (!b){
                 nrOfTests++;
-                f.write((content+"\n").getBytes(StandardCharsets.UTF_8));
+
+                long asserts = getOccurences("(assert|verify)", content);
+
+                int loc = (int) getOccurences("@@@", content);
+                content = content.replaceAll("@@@","\n");
+                String getFunctionName = getFunctionName(content);
+                if(numberOfLoc.containsKey( loc)) {
+                    numberOfLoc.put(loc,  numberOfLoc.get(loc) + 1);
+                } else {
+                    numberOfLoc.put(loc,  1);
+                }
+                numberOfAsserts[(int) asserts]++;
+                if(asserts>0){ // 2669
+
+                    f.write(message);
+                    f.write((getFunctionName + " " + loc + " " + asserts+"\n").getBytes(StandardCharsets.UTF_8));
+                    f.write("hashid \t: ".getBytes(StandardCharsets.UTF_8));
+                    f.write(hashID);
+                    f.write(("\n"+content+"\n").getBytes(StandardCharsets.UTF_8));
+                }
             }
 
         }
@@ -179,7 +209,7 @@ public class Miner {
      * @param oldCommit Old commit tree iterator
      * @param newCommit New Commit tree iterator
      */
-    private static void gitDiff(Repository repo, AbstractTreeIterator oldCommit, AbstractTreeIterator newCommit) throws GitAPIException, IOException {
+    private static void gitDiff(Repository repo, AbstractTreeIterator oldCommit, AbstractTreeIterator newCommit, RevCommit commitInformation) throws GitAPIException, IOException {
         Pattern delimiter = Pattern.compile("(?=@Test[^{]+[{])((?:(?=.*?[{](?!.*?\\2)(.*}(?!.*\\3).*))(?=.*?}(?!.*?\\3)(.*)).)+?.*?(?=\\2)[^{]*(?=\\3$))");
         DiffFormatter formatter = new DiffFormatter(out) ;
         TreeFilter treeFilter = PathSuffixFilter.create(".java");
@@ -202,21 +232,26 @@ public class Miner {
 
 
             x = x.replaceAll("\n", "@@@");
+            byte[] message = ( "name:\t" + commitInformation.getName()
+                    + "\nauthor:\t" + commitInformation.getAuthorIdent().getName()
+                    + "\ndate\t" + ((new Date(commitInformation.getCommitTime() * 1000L)))
+                    + "\nmessage\t" + commitInformation.getFullMessage() +"\n").getBytes(StandardCharsets.UTF_8);
 
+            byte[] hashid = commitInformation.getName().getBytes(StandardCharsets.UTF_8);
             if( 100000>x.length()){
-                parseBody(x,delimiter);
+                parseBody(x,delimiter,message, hashid);
             } else{
-                parseBody(x.substring(0,x.length()>>2),delimiter);
-                parseBody(x.substring(x.length()>>2,x.length()>>1),delimiter);
-                parseBody(x.substring(x.length()>>1,(x.length()*3)>>2),delimiter);
-
-                parseBody(x.substring((x.length()*3)>>2),delimiter);
+                parseBody(x.substring(0,x.length()>>2),delimiter,message,hashid);
+                parseBody(x.substring(x.length()>>2,x.length()>>1),delimiter,message,hashid);
+                parseBody(x.substring(x.length()>>1,(x.length()*3)>>2),delimiter,message,hashid);
+                parseBody(x.substring((x.length()*3)>>2),delimiter,message,hashid);
 
             }
 
             out.reset();
         }
         //out.close();
+
 
     }
 
@@ -321,52 +356,19 @@ public class Miner {
     }
 
     private static String getFunctionName(String test){
-        Pattern namePat = Pattern.compile("\\(");
-        String name = namePat.split(test)[0];
-        String[] newName = name.split("\\s");
-
-        return newName[newName.length-1];
-    }
-
-
-
-    /**
-     * Regex to get all test files (?=@Test[^{]+\{)((?:(?=.*?\{(?!.*?\2)(.*}(?!.*\3).*))(?=.*?}(?!.*?\3)(.*)).)+?.*?(?=\2)[^{]*(?=\3$)) using backtracking
-     *
-     */
-    private static void parseOutTests() throws IOException {
-        try{
-            f.close();
-          //  String content = Files.readString(Paths.get("output/" + OUTPUTPATH + "/diff.txt"));
-            File file = new File("output/" + OUTPUTPATH + "/diff.txt");
-            Scanner scan = new Scanner(file);
-            new File("output/" + OUTPUTPATH + "/tests.txt");
-            new File("output/" + OUTPUTPATH + "/tests.txt");
-            FileWriter writer = new FileWriter("output/" + OUTPUTPATH + "/tests.txt");
-            writer.write("Function names | Lines of code | #assertions\n");
-            while(scan.hasNextLine()) {
-                String test= scan.nextLine();
-                if(!test.equals("") && !test.contains("@Ignore")) {
-                    long asserts = getOccurences("(assert|verify)", test);
-                    long loc = getOccurences("@@@", test);
-                    String getFunctionName = getFunctionName(test);
-
-                    writer.write(getFunctionName + " " + loc + " " + asserts+"\n");
+        for (String name: test.split("\n")) {
+            String[] name2 = name.split("\\(");
+            if(name2.length>0) {
+                if (!name2[0].contains("@")) {
+                    String[] name3 = name2[0].split("\\s");
+                    if(name3.length>0 ){
+                        return name3[name3.length-1];
+                    }
                 }
-
             }
-            writer.close();
-
-        } catch(FileNotFoundException e){
-            System.out.println("error occured");
         }
-
+        return "foo";
     }
-
-
-
-
-
     private static void setupVariables(String name, String url){
         REPODIRECTORY =  "gitRepos/repos/"+name;
         URLTOREPO = url;
@@ -449,8 +451,6 @@ public class Miner {
                     run();
                 }
             }
-
-
         } catch(FileNotFoundException e ) {
             System.err.println("File does not exist ");
             System.err.println("In order to run the program an input.txt in the top repo folder must be added consisting of\"repo name\" \"http link \" \n example : jgit-miner https://github.com/Renstrom/jgit-miner.git ");
@@ -467,6 +467,97 @@ public class Miner {
 
     }
 
+    private static String getDistribution(int[] intArray){
+        StringBuilder output = new StringBuilder();
+        for (int i = 0 ; i < intArray.length; i++) {
+            output.append("{").append(i).append(",").append(intArray[i]).append("} ");
+
+        }
+        return "["+output+"]";
+    }
+
+    private static String getDistribution(HashMap<Integer, Integer> hMap){
+        StringBuilder output = new StringBuilder();
+        TreeMap<Integer, Integer> sorted = new TreeMap<>(hMap);
+        for (Map.Entry<Integer, Integer> entry : sorted.entrySet())
+            output.append("{").append(entry.getKey()).append(",").append(entry.getValue()).append("} ");
+        return "["+output+"]";
+    }
+
+    private static String getDetails(int[] array){
+
+        int med = nrOfTests/2;
+        int max = -1;
+        int min = 99999;
+        int nonZero = 0;
+        for (int val =0 ; val < array.length; val++) {
+            if(array[val]>max) max = array[val];
+            if (array[val] <min) min = array[val];
+            if (val != 0){
+                nonZero+=val*array[val];
+                if(med <nonZero && med == nrOfTests/2){
+                    med = val;
+                }
+            }
+        }
+        double avg = (double) nonZero/(double) nrOfTests;
+
+        return String.format("[%s %s %s %s %s]", nrOfTests, avg, max, min, med);
+    }
+
+
+    private static String getDetails(HashMap<Integer, Integer> hMap){
+        TreeMap<Integer, Integer> sorted = new TreeMap<>(hMap);
+        double avgLOC = 0;
+        double totLines = 0;
+        int median = nrOfTests/2;
+        int testsIteratedOver = 0;
+        int max = -1;
+        int min = 9999999;
+        for (Map.Entry<Integer, Integer> entry : sorted.entrySet()){
+            testsIteratedOver+= entry.getValue();
+            if(entry.getKey()<min){
+                min = entry.getKey();
+            } else if(entry.getKey()>max){
+                max = entry.getKey();
+            }
+            if(testsIteratedOver>median && median == nrOfTests/2){
+                median = entry.getKey();
+            }
+            totLines+= entry.getKey()* entry.getValue();
+        }
+        avgLOC = totLines/nrOfTests;
+
+        return String.format("[%s %s %s %s %s]", nrOfTests, avgLOC, max, min, median);
+
+    }
+
+    private static boolean saveResults(String fileName, String distribution, String details){
+        try{
+            System.out.println("Saving " + fileName + " results");
+            System.out.println(distribution);
+            System.out.println(details);
+            FileWriter writer = new FileWriter("result/"+fileName+".txt",true);
+            writer.write("\n["+ OUTPUTPATH + "]"+ distribution+details);
+            System.out.println( fileName + " results saved in result/"+ fileName+".txt");
+            writer.close();
+        } catch (IOException e){
+            e.printStackTrace();
+            return false;
+        }
+        return true;
+    }
+
+    private static void saveResults(){
+        boolean a = saveResults("assert", getDistribution(numberOfAsserts),getDetails(numberOfAsserts));
+        boolean b = saveResults("loc",getDistribution(numberOfLoc),getDetails(numberOfLoc));
+        if (a && b){
+            System.out.println("Data saved");
+        } else {
+            System.out.println("Error occured");
+        }
+    }
+
     private static void run() throws IOException, GitAPIException {
         makeDirectory();
         try{
@@ -478,8 +569,6 @@ public class Miner {
         } finally {
             walk();
             System.out.println(nrOfTests + " tests accumulated");
-            System.out.println("Trying to parse out tests");
-            parseOutTests();
             writeToFile("output/"+OUTPUTPATH+"/full.txt",fullData);
             System.out.printf("Saving hashID information output/%s/full.txt%n", OUTPUTPATH);
             writeToFile("output/"+OUTPUTPATH+"/hash.txt",hashValues);
@@ -489,5 +578,6 @@ public class Miner {
     }
     public static void main(String[] args) throws GitAPIException, IOException {
             setup();
+            saveResults();
     }
 }
