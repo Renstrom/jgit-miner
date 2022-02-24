@@ -39,7 +39,7 @@ public class Miner {
 
 
 
-
+    static ByteArrayOutputStream out = new ByteArrayOutputStream();
     static String REPODIRECTORY       = "gitRepos/repos/"; // Directory in which all repos are saved
     static String PATHGITDIRECTORY    = REPODIRECTORY+"/.git"; // Local directory to git repo
     static String URLTOREPO           = "https://github.com/iluwatar/java-design-patterns.git"; // URL to repo
@@ -202,7 +202,7 @@ public class Miner {
 
         }
     }
-    static ByteArrayOutputStream out = new ByteArrayOutputStream();
+
     /**
      * Generates the git diffs for each commit.
      * @param repo Repository analysing
@@ -274,9 +274,6 @@ public class Miner {
         ObjectReader        reader      = repository.newObjectReader();
         treeParser.reset(reader, tree.getId());
         walk.dispose();
-
-
-
         return treeParser;
     }
 
@@ -328,18 +325,12 @@ public class Miner {
     }
 
 
-
-
-
     /**
-     *
-     * TODO refactor data to fit SVM planned data point structure (Number, #LOCDiff, Cyclomatic Complexity, #Asserts)
-     * NOTE MAY BE MOVED TO SEPARATE FILE
+     * Calculates the number of occurences of a specific pattern in a function
+     * @param pattern pattern used
+     * @param test test function analyzed
+     * @return amount of occurences
      */
-    private static void refactorData(){
-    }
-
-
     private static long getOccurences(String pattern, String test){
 
         Pattern locPat = Pattern.compile(pattern);
@@ -348,13 +339,11 @@ public class Miner {
         return  loc.results().count();
     }
 
-    private static String getName(String pattern, String test){
-        Pattern namePat = Pattern.compile(pattern);
-        Matcher name = namePat.matcher(test);
-
-        return name.group(1);
-    }
-
+    /**
+     * Gets the function name of the test
+     * @param test String of the test
+     * @return name of the test
+     */
     private static String getFunctionName(String test){
         for (String name: test.split("\n")) {
             String[] name2 = name.split("\\(");
@@ -369,6 +358,12 @@ public class Miner {
         }
         return "foo";
     }
+
+    /**
+     * Setups variables for the given repo
+     * @param name Name of the project repo
+     * @param url URL to the project repo (MUST BE A GITHUB REPOSITORY)
+     */
     private static void setupVariables(String name, String url){
         REPODIRECTORY =  "gitRepos/repos/"+name;
         URLTOREPO = url;
@@ -384,6 +379,11 @@ public class Miner {
 
     }
 
+    /**
+     * Showcase which repository are planed to run
+     * @param names All names of the repos
+     * @param checkMarks Array of boolean, which indicates which functions gets to run
+     */
     private static void printRepos(ArrayList<String> names, boolean[] checkMarks){
         for (int i = 0; i < names.size(); i++) {
             String output;
@@ -396,6 +396,10 @@ public class Miner {
         }
     }
 
+
+    /**
+     * Setup function to get all the nessary information to create the program.
+     */
     private static void setup(){
         System.out.println("Hello and Welcome to the JGIT Miner\n Please select which repos you would like to mine for test files: ");
         try{
@@ -406,7 +410,6 @@ public class Miner {
                     new BufferedReader(new FileReader("input.txt"));
             System.out.println("Hello and Welcome to the JGIT Miner\n Please select which repos you would like to mine for test files: ");
             while (( line = reader.readLine()) != null) {
-
                 // row[0] = name, row[1] = http link
                 String[] row = line.split("\\s");
                 names.add(row[0]);
@@ -467,10 +470,15 @@ public class Miner {
 
     }
 
+    /**
+     * Generated the distribution of the int array where the index showcases which value gets used
+     * @param intArray number of occurences of a specific value (example assertions)
+     * @return distribution
+     */
     private static String getDistribution(int[] intArray){
         StringBuilder output = new StringBuilder();
         for (int i = 0 ; i < intArray.length; i++) {
-            if(intArray[i]!=0)
+            if(intArray[i]!=0) // Removes number of
                 output.append("{").append(i).append(",").append(intArray[i]).append("} ");
         }
         return "["+output+"]";
@@ -519,7 +527,7 @@ public class Miner {
             if(entry.getKey()<min){
                 min = entry.getKey();
             } else if(entry.getKey()>max){
-                max = entry.getKey();
+                max = entry.getValue();
             }
             if(testsIteratedOver>median && median == nrOfTests/2){
                 median = entry.getKey();
@@ -548,7 +556,7 @@ public class Miner {
         return true;
     }
 
-    private static void saveResults(){
+    public static void saveResults(){
         boolean a = saveResults("assert", getDistribution(numberOfAsserts),getDetails(numberOfAsserts));
         boolean b = saveResults("loc",getDistribution(numberOfLoc),getDetails(numberOfLoc));
         if (a && b){
@@ -559,7 +567,6 @@ public class Miner {
     }
 
     private static void run() throws IOException, GitAPIException {
-        makeDirectory();
         try{
             makeDirectory();
             getRepo(URLTOREPO);
@@ -573,11 +580,12 @@ public class Miner {
             System.out.printf("Saving hashID information output/%s/full.txt%n", OUTPUTPATH);
             writeToFile("output/"+OUTPUTPATH+"/hash.txt",hashValues);
             System.out.println("Repo data done");
+            saveResults();
 
         }
     }
     public static void main(String[] args) throws GitAPIException, IOException {
             setup();
-            saveResults();
+
     }
 }
