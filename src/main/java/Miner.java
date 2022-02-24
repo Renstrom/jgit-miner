@@ -470,8 +470,8 @@ public class Miner {
     private static String getDistribution(int[] intArray){
         StringBuilder output = new StringBuilder();
         for (int i = 0 ; i < intArray.length; i++) {
-            output.append("{").append(i).append(",").append(intArray[i]).append("} ");
-
+            if(intArray[i]!=0)
+                output.append("{").append(i).append(",").append(intArray[i]).append("} ");
         }
         return "["+output+"]";
     }
