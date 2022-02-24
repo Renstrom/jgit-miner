@@ -7,8 +7,8 @@ loc = "C:\\Users\\ander\\Documents\\Skola\\Master\\jgit-mine\\jgit-miner\\result
 
 
 
-def plotLine(repo, xAxis,yAxis):
-    plt.plot(xAxis,yAxis,label=str(repo))
+def plotLine(repo, xAxis,yAxis,pl):
+    pl.plot(xAxis,yAxis,label=str(repo))
 
 def getMaxMin(summary,xMax,yMax,yMin):
     print(summary)
@@ -29,8 +29,10 @@ def plotData(repos, data, xAxisLabel, yAxisLabel, title, summary):
     
 
     for i in range(len(repos)):
-        plotLine(repos[i],data[i][0],data[i][1])
+        plotLine(repos[i],data[i][0],data[i][1],plt)
+        
         xMax, yMin,yMax = getMaxMin(summary[i],xMax, yMax, yMin)
+        
         
     plt.xlabel(xAxisLabel)
     plt.ylabel(yAxisLabel)
@@ -91,6 +93,6 @@ def setup(path, name, xAxisLabel, yAxisLabel):
     plotData(repos,xy,xAxisLabel,yAxisLabel,name,summary)
     
     
-setup(assertions,"Assertions","Number of assertions","% Occurences of assertions")
+setup(assertions,"Assertions","Number of assertions","Occurences of assertions/number of tests")
     
-setup(loc,"LOC","Lines of codes","% Occurences of #LOC")
+setup(loc,"LOC","Lines of codes"," Occurences of #LOC/number of tests")
