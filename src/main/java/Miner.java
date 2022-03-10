@@ -196,7 +196,7 @@ public class Miner {
                 content = content.replaceAll("@Test", "");
 
                 String getFunctionName = getFunctionName(content);
-               // int cyclomaticComplexity = CCSolver.getCyclomaticComplexity(content);
+                int cyclomaticComplexity = CCSolver.getCyclomaticComplexity(content);
                 String fullFunctionPath = entry.getOldPath() + " "+ getFunctionName;
 
                 numberOfLoc.put(loc,
