@@ -198,7 +198,7 @@ public class Miner {
                 String getFunctionName = getFunctionName(content);
                // int cyclomaticComplexity = CCSolver.getCyclomaticComplexity(content);
                 String fullFunctionPath = entry.getOldPath() + " "+ getFunctionName;
-                /*
+
                 numberOfLoc.put(loc,
                         numberOfLoc.containsKey(loc) ?
                                 numberOfLoc.get(loc)+1
@@ -210,7 +210,7 @@ public class Miner {
                                 numberOfCyclomaticComplexity.get(cyclomaticComplexity)+1
                                 :1);
 
-                 */
+
                 numberOfRemovedTestsPerCommit.put(date +","+commitID,
                         numberOfRemovedTestsPerCommit.containsKey(date +","+commitID) ?
                                 numberOfRemovedTestsPerCommit.get(date+","+commitID)+1
@@ -621,12 +621,12 @@ public class Miner {
 
     public static void saveResults() {
         boolean a=true,b=true, c=true,d=true,e = true;
-       // a = saveResults("assert", getDistribution(numberOfAsserts), getDetails(numberOfAsserts), "\n[%s]%s%s");
-     //   b = saveResults("loc", getDistribution(numberOfLoc, "{%s,%s}"), getDetails(numberOfLoc), "\n[%s]%s%s");
+        a = saveResults("assert", getDistribution(numberOfAsserts), getDetails(numberOfAsserts), "\n[%s]%s%s");
+        b = saveResults("loc", getDistribution(numberOfLoc, "{%s,%s}"), getDetails(numberOfLoc), "\n[%s]%s%s");
         c = saveResults("commit", getDistribution(numberOfRemovedTestsPerCommit, "\n{%s,%s}"), "", "\n[%s]\n%s%s");
-     //   d = saveResults("fullPathMethodsAndCommits", getDistribution2(methodTest, "\n{%s,%s}"), "", "\n[%s]\n%s%s");
-      //  e = saveResults("cyclomatic", getDistribution(numberOfCyclomaticComplexity, "{%s,%s}"),getDetails(numberOfCyclomaticComplexity), "\n[%s]%s%s");
-        if (a && b) {
+        d = saveResults("fullPathMethodsAndCommits", getDistribution2(methodTest, "\n{%s,%s}"), "", "\n[%s]\n%s%s");
+        e = saveResults("cyclomatic", getDistribution(numberOfCyclomaticComplexity, "{%s,%s}"),getDetails(numberOfCyclomaticComplexity), "\n[%s]%s%s");
+        if (a && b && c && d & e) {
             System.out.println("Data saved");
         } else {
             System.out.println("Error occured");
