@@ -1,9 +1,9 @@
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 
+import javacc.Example1;
 
 import java.util.Scanner;
 import org.eclipse.jgit.api.Git;
@@ -36,11 +36,20 @@ public class CCSolver {
 
 
     /**
-     * @param methodName name of the method.
+     * @param function Full string of the function.
      * @param filePath   path to file in which the tests exists in.
      * @return CyclomaticComplexity
      */
-    private static int getCyclomaticComplexity(String methodName, String filePath) {
+    public static int getCyclomaticComplexity(String function) {
+        try{
+            InputStream targetStream = new ByteArrayInputStream(function.getBytes(StandardCharsets.UTF_8));
+            int x = Example1.CyclomaticComplexity(targetStream);
+            targetStream.close();
+            return x;
+        }catch(Exception e){
+            e.printStackTrace();
+        }
+
         return 0;
     }
 

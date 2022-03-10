@@ -1,5 +1,6 @@
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.*;
 
 import java.util.regex.Matcher;
@@ -23,6 +24,13 @@ import org.eclipse.jgit.treewalk.filter.PathSuffixFilter;
 import org.eclipse.jgit.treewalk.filter.TreeFilter;
 
 
+class Pair {
+    public static <T, U> Map.Entry<T,U> of(T first, U second){
+        return new AbstractMap.SimpleEntry<>(first,second);
+    }
+}
+
+
 /**
  * Algorithm to mine GIT Commit histories using JGit
  * src/main/java/Miner.java match()
@@ -43,7 +51,10 @@ public class Miner {
     static int nrOfTests                = 0;
     static int[] numberOfAsserts        = new int[200];
 
+
+
     static HashMap<Integer,Integer>  numberOfLoc                   = new HashMap<>(200);
+    static HashMap<Integer,Integer>  numberOfCyclomaticComplexity  = new HashMap<>(200);
     static HashMap<String, Integer>  numberOfRemovedTestsPerCommit = new HashMap<>(200);
     static HashMap<String, ArrayList<String>> methodTest           = new HashMap<>(200);
 
@@ -88,6 +99,7 @@ public class Miner {
 
             Iterable<RevCommit> commits = git.log().all().call();
 
+
             for (RevCommit commit : commits) {
                 nrOfCommits++;
                 if (nrOfCommits % 1000 == 0) {
@@ -101,6 +113,13 @@ public class Miner {
 
                 RevCommit targetCommit = walk.parseCommit(repo.resolve(
                         commit.getName()));
+                if (!newHashID.equals("") && matched) {
+                    oldHashID = commit.getName();
+                    AbstractTreeIterator oldCommit = prepareTreeParser(repo, oldHashID);
+                    AbstractTreeIterator newCommit = prepareTreeParser(repo, newHashID);
+                    gitDiff(repo, oldCommit, newCommit, targetCommit);
+                    matched = false;
+                }
                 for (Map.Entry<String, Ref> e : repo.getAllRefs().entrySet()) {
                     if (e.getKey().startsWith(Constants.R_HEADS)) {
                         if (walk.isMergedInto(targetCommit, walk.parseCommit(
@@ -116,13 +135,7 @@ public class Miner {
                 }
 
                 if (foundInThisBranch) {
-                    if (!newHashID.equals("") && matched) {
-                        oldHashID = commit.getName();
-                        AbstractTreeIterator oldCommit = prepareTreeParser(repo, oldHashID);
-                        AbstractTreeIterator newCommit = prepareTreeParser(repo, newHashID);
-                        gitDiff(repo, oldCommit, newCommit, commit);
-                        matched = false;
-                    }
+
                     newHashID = commit.getName();
                     if (match(commit.getFullMessage())) {
                         String name = commit.getName();
@@ -165,7 +178,7 @@ public class Miner {
      * @param p       Pattern to parse out data
      * @param message Information of the new message
      */
-    private static void parseBody(String x, Pattern p, byte[] message, byte[] hashID, String commitID, DiffEntry entry) throws IOException {
+    private static void parseBody(String x, Pattern p, byte[] message, byte[] hashID,String date, String commitID, DiffEntry entry) throws IOException, GitAPIException {
         Matcher m = p.matcher(x);
 
         while (m.find()) {
@@ -179,13 +192,30 @@ public class Miner {
                 long asserts = getOccurences("(assert|verify)", content);
 
                 int loc = (int) getOccurences("@@@", content);
-                content = content.replaceAll("@@@", "\n");
+                content = content.replaceAll("@@@-", "\n");// Removes minuses
+                content = content.replaceAll("@Test", "");
+
                 String getFunctionName = getFunctionName(content);
-
+               // int cyclomaticComplexity = CCSolver.getCyclomaticComplexity(content);
                 String fullFunctionPath = entry.getOldPath() + " "+ getFunctionName;
+                /*
+                numberOfLoc.put(loc,
+                        numberOfLoc.containsKey(loc) ?
+                                numberOfLoc.get(loc)+1
+                                :1);
 
-                numberOfLoc.put(loc, numberOfLoc.containsKey(loc) ? numberOfLoc.get(loc)+1 :1);
-                numberOfRemovedTestsPerCommit.put(commitID, numberOfRemovedTestsPerCommit.containsKey(commitID) ? numberOfRemovedTestsPerCommit.get(commitID)+1: 1);
+                numberOfCyclomaticComplexity.put(
+                        cyclomaticComplexity,
+                        numberOfCyclomaticComplexity.containsKey(cyclomaticComplexity) ?
+                                numberOfCyclomaticComplexity.get(cyclomaticComplexity)+1
+                                :1);
+
+                 */
+                numberOfRemovedTestsPerCommit.put(date +","+commitID,
+                        numberOfRemovedTestsPerCommit.containsKey(date +","+commitID) ?
+                                numberOfRemovedTestsPerCommit.get(date+","+commitID)+1
+                                :1);
+
                 if (methodTest.containsKey(commitID)){
                     methodTest.get(commitID).add(fullFunctionPath);
                 }else {
@@ -193,8 +223,8 @@ public class Miner {
                     temp.add(fullFunctionPath);
                     methodTest.put(commitID,temp);
                 }
+                    numberOfAsserts[(int) asserts]++;
 
-                numberOfAsserts[(int) asserts]++;
                 if (asserts > 0) { // 2669
 
                     f.write(message);
@@ -235,21 +265,23 @@ public class Miner {
             formatter.setPathFilter(TreeFilter.ANY_DIFF);
             formatter.toFileHeader(entry);
             String x = out.toString(StandardCharsets.UTF_8);
-
+            Date time = (new Date(commitInformation.getCommitTime() * 1000L));
+            SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
+            String date = format.format(time);
             x = x.replaceAll("\n", "@@@");
             byte[] message = ("name:\t" + commitInformation.getName()
                     + "\nauthor:\t" + commitInformation.getAuthorIdent().getName()
-                    + "\ndate\t" + ((new Date(commitInformation.getCommitTime() * 1000L)))
+                    + "\ndate\t" + date
                     + "\nmessage\t" + commitInformation.getFullMessage() + "\n").getBytes(StandardCharsets.UTF_8);
 
             byte[] hashid = commitInformation.getName().getBytes(StandardCharsets.UTF_8);
             if (100000 > x.length()) {
-                parseBody(x, delimiter, message, hashid, commitInformation.getName(), entry);
+                parseBody(x, delimiter, message, hashid, date,commitInformation.getName(), entry);
             } else {
-                parseBody(x.substring(0, x.length() >> 2), delimiter, message, hashid, commitInformation.getName(), entry);
-                parseBody(x.substring(x.length() >> 2, x.length() >> 1), delimiter, message, hashid, commitInformation.getName(), entry);
-                parseBody(x.substring(x.length() >> 1, (x.length() * 3) >> 2), delimiter, message, hashid, commitInformation.getName(), entry);
-                parseBody(x.substring((x.length() * 3) >> 2), delimiter, message, hashid, commitInformation.getName(), entry);
+                parseBody(x.substring(0, x.length() >> 2), delimiter, message, hashid,date, commitInformation.getName(), entry);
+                parseBody(x.substring(x.length() >> 2, x.length() >> 1), delimiter, message, hashid,date, commitInformation.getName(), entry);
+                parseBody(x.substring(x.length() >> 1, (x.length() * 3) >> 2), delimiter, message, hashid,date, commitInformation.getName(), entry);
+                parseBody(x.substring((x.length() * 3) >> 2), delimiter, message, hashid,date,commitInformation.getName(), entry);
             }
 
             out.reset();
@@ -380,6 +412,7 @@ public class Miner {
         numberOfAsserts = new int[200];
         numberOfLoc = new HashMap<>(200);
         numberOfRemovedTestsPerCommit = new HashMap<>(200);
+        numberOfCyclomaticComplexity = new HashMap<>(200);
 
 
         try {
@@ -410,6 +443,7 @@ public class Miner {
     }
 
 
+
     /**
      * Setup function to get all the necessary information to create the program.
      */
@@ -423,6 +457,7 @@ public class Miner {
                     new BufferedReader(new FileReader("input.txt"));
             System.out.println("Hello and Welcome to the JGIT Miner\n Please select which repos you would like to mine for test files: ");
             while ((line = reader.readLine()) != null) {
+
                 // row[0] = name, row[1] = http link
                 String[] row = line.split("\\s");
                 names.add(row[0]);
@@ -585,10 +620,12 @@ public class Miner {
 
 
     public static void saveResults() {
-        boolean a = saveResults("assert", getDistribution(numberOfAsserts), getDetails(numberOfAsserts), "\n[%s]%s%s");
-        boolean b = saveResults("loc", getDistribution(numberOfLoc, "{%s,%s}"), getDetails(numberOfLoc), "\n[%s]%s%s");
-        boolean c = saveResults("commit", getDistribution(numberOfRemovedTestsPerCommit, "\n{%s,%s}"), "", "\n[%s]\n%s%s");
-        boolean d = saveResults("fullPathMethodsAndCommits", getDistribution2(methodTest, "\n{%s,%s}"), "", "\n[%s]\n%s%s");
+        boolean a=true,b=true, c=true,d=true,e = true;
+       // a = saveResults("assert", getDistribution(numberOfAsserts), getDetails(numberOfAsserts), "\n[%s]%s%s");
+     //   b = saveResults("loc", getDistribution(numberOfLoc, "{%s,%s}"), getDetails(numberOfLoc), "\n[%s]%s%s");
+        c = saveResults("commit", getDistribution(numberOfRemovedTestsPerCommit, "\n{%s,%s}"), "", "\n[%s]\n%s%s");
+     //   d = saveResults("fullPathMethodsAndCommits", getDistribution2(methodTest, "\n{%s,%s}"), "", "\n[%s]\n%s%s");
+      //  e = saveResults("cyclomatic", getDistribution(numberOfCyclomaticComplexity, "{%s,%s}"),getDetails(numberOfCyclomaticComplexity), "\n[%s]%s%s");
         if (a && b) {
             System.out.println("Data saved");
         } else {
