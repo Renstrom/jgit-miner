@@ -1,13 +1,14 @@
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.text.MessageFormat;
+
 import java.text.SimpleDateFormat;
 import java.util.*;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
-import jdk.jfr.consumer.RecordedClass;
+
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.JGitInternalException;
@@ -23,10 +24,10 @@ import org.eclipse.jgit.revwalk.filter.MessageRevFilter;
 import org.eclipse.jgit.revwalk.filter.RevFilter;
 import org.eclipse.jgit.treewalk.AbstractTreeIterator;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
-import org.eclipse.jgit.treewalk.EmptyTreeIterator;
+
 import org.eclipse.jgit.treewalk.filter.PathSuffixFilter;
 import org.eclipse.jgit.treewalk.filter.TreeFilter;
-import org.eclipse.jgit.util.io.DisabledOutputStream;
+
 
 
 class Pair {
@@ -44,9 +45,9 @@ class Pair {
 public class Miner {
 
 
-    static ArrayList<String> fullData   = new ArrayList<>();
-    static ArrayList<String> hashValues = new ArrayList<>();
-
+    static ArrayList<String> fullData                    = new ArrayList<>();
+    static ArrayList<String> hashValues                  = new ArrayList<>();
+    static HashMap<String, ArrayList<String>> tests      = new HashMap<>();
 
     static ByteArrayOutputStream out    = new ByteArrayOutputStream();
     static String REPODIRECTORY         = "gitRepos/repos/"; // Directory in which all repos are saved
@@ -84,20 +85,19 @@ public class Miner {
      */
     public static void walk() throws IOException, GitAPIException {
         long nrOfCommits = 0;
-        String oldHashID;
-        String newHashID = "";
-        AbstractTreeIterator newCommit = null;
-        AbstractTreeIterator oldCommit = null;
+
+        AbstractTreeIterator newCommit ;
+        AbstractTreeIterator oldCommit ;
         RevCommit oldTargetCommit = null;
         boolean matched = false; // Used to print the correct git diff
-        boolean foundInThisBranch = false;
+        boolean foundInThisBranch ;
         Repository repo = new FileRepository(PATHGITDIRECTORY);
         Git git = new Git(repo);
         RevWalk walk = new RevWalk(repo);
         RevFilter revFilter = MessageRevFilter.create("RuntimeException");
         walk.setRevFilter(revFilter);
         List<Ref> branches = git.branchList().call();
-        int z = 1;
+
         for (Ref branch : branches) { // Iterating over all branches
             String branchName = branch.getName();
 
@@ -106,7 +106,7 @@ public class Miner {
             System.out.println("-------------------------------------");
 
             Iterable<RevCommit> commits = git.log().all().call();
-            int x = 0;
+
             for (RevCommit commit : commits) {
 
                 nrOfCommits++;
@@ -149,10 +149,6 @@ public class Miner {
                     if(matched){
                         oldCommit = prepareTreeParser(repo, oldTargetCommit.getName());
                         newCommit = prepareTreeParser(repo, commit.getName());
-                        if(commit.getName().equals("e68d3202ba1b2b06dd0f976a6292872d950eda9e"))
-                            System.out.println("HELLO?"); // "4ff6596a9f2efbcc90ad5f5f70ca089d1b6eb3d1"
-
-
                         gitDiff(git, oldCommit, newCommit, oldTargetCommit);
 
 
@@ -235,14 +231,20 @@ public class Miner {
 
                 if (methodTest.containsKey(commitID)){
                     methodTest.get(commitID).add(fullFunctionPath);
+                    tests.get(commitID).add(content);
+
+
                 }else {
                     ArrayList<String> temp = new ArrayList<>();
                     temp.add(fullFunctionPath);
                     methodTest.put(commitID,temp);
+                    ArrayList<String> temp2 = new ArrayList<>();
+                    temp2.add(content);
+                    tests.put(commitID,temp2);
                 }
                     numberOfAsserts[(int) asserts]++;
 
-                if (asserts > 0) { // 2669
+                if (asserts > 0) {
 
                     f.write(message);
                     f.write((getFunctionName + " " + loc + " " + asserts + "\n").getBytes(StandardCharsets.UTF_8));
@@ -439,6 +441,7 @@ public class Miner {
         numberOfLoc = new HashMap<>(200);
         numberOfRemovedTestsPerCommit = new HashMap<>(200);
         numberOfCyclomaticComplexity = new HashMap<>(200);
+        tests = new HashMap<>();
 
 
         try {
@@ -644,15 +647,73 @@ public class Miner {
         return true;
     }
 
+    private static boolean saveResultsTest(String fileName, HashMap<String, Integer> topPoints){
+        try {
+            System.out.println("Saving " + fileName + " results");
+
+            FileWriter writer = new FileWriter("result/" + fileName + ".md", false);
+            StringBuilder points = new StringBuilder();
+            for (String key: topPoints.keySet()) {
+                points.append("## ").append(key).append(" ##\n");
+                System.out.println(topPoints.get(key));
+                for (String test: tests.get(key)) {
+                    test = test.replaceAll("\n\\+","\n");
+                    test = test.replaceAll("^\\+","");
+                    points.append("```\n").append(test).append("\n```\n");
+                }
+            }
+            writer.write(points.toString());
+            System.out.println(fileName + " results saved in result/" + fileName + ".txt");
+            writer.close();
+
+        }catch (IOException e){
+            e.printStackTrace();
+            return false;
+        }
+
+
+        return true;
+    }
+
+    private static HashMap<String, Integer> generateTopArray(){
+        HashMap<String, Integer> tempMap = new HashMap<>();
+        for (Map.Entry<String,ArrayList<String>> entry : tests.entrySet()) {
+            tempMap.put(entry.getKey(),entry.getValue().size());
+
+        }
+        HashMap<String,Integer> sortedMapAsc = sortByValue(tempMap,false);
+        HashMap<String, Integer> returnMap = new HashMap<>();
+        int x = 0;
+        for (Map.Entry<String, Integer> entry: sortedMapAsc.entrySet()) {
+            if (x ==5){
+                return returnMap;
+            }
+            x++;
+            returnMap.put(entry.getKey(), entry.getValue());
+        }
+        return returnMap;
+    }
+
+
+    private static HashMap<String, Integer> sortByValue(HashMap<String,Integer> unSortedMap, boolean ascending){
+        List<Map.Entry<String,Integer>> list = new LinkedList<>(unSortedMap.entrySet());
+        list.sort((v1,v2) -> ascending
+                ? v1.getValue().compareTo(v2.getValue()) == 0
+                ? v1.getKey().compareTo(v2.getKey())
+                : v1.getValue().compareTo(v2.getValue()) : v2.getValue().compareTo(v1.getValue()) == 0 ? v2.getKey().compareTo(v1.getKey()) : v2.getValue().compareTo(v1.getValue()));
+        return list.stream().collect(Collectors.toMap(Map.Entry::getKey,Map.Entry::getValue, (a,b) -> b, LinkedHashMap::new ));
+    }
+
 
     public static void saveResults() {
-        boolean a=true,b=true, c=true,d=true,e = true;
+        boolean a= false,b = false, c =false,d=false,e=false, g;
         a = saveResults("assert", getDistribution(numberOfAsserts), getDetails(numberOfAsserts), "\n[%s]%s%s");
         b = saveResults("loc", getDistribution(numberOfLoc, "{%s,%s}"), getDetails(numberOfLoc), "\n[%s]%s%s");
         c = saveResults("commit", getDistribution(numberOfRemovedTestsPerCommit, "\n{%s,%s}"), "", "\n[%s]\n%s%s");
         d = saveResults("fullPathMethodsAndCommits", getDistribution2(methodTest, "\n{%s,%s}"), "", "\n[%s]\n%s%s");
         e = saveResults("cyclomatic", getDistribution(numberOfCyclomaticComplexity, "{%s,%s}"),getDetails(numberOfCyclomaticComplexity), "\n[%s]%s%s");
-        if (a && b && c && d & e) {
+        g = saveResultsTest("tests_"+OUTPUTPATH, generateTopArray());
+        if (a && b && c && d && e && g) {
             System.out.println("Data saved");
         } else {
             System.out.println("Error occured");
