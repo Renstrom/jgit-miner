@@ -29,7 +29,7 @@ def plotLine(repo, xAxis,yAxis,pl,option):
 
         locator = mdates.YearLocator()
         ax.xaxis.set_major_locator(locator)
-        pl.plot(xAxis,yAxis,label=str(repo))
+        pl.scatter(xAxis,yAxis,label=str(repo))
         plt.xlabel("Date removed(yyyy-mm-dd)")
         plt.xticks(rotation=45)
         plt.ylabel("Number of removed test functions")

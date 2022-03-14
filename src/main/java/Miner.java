@@ -1,16 +1,19 @@
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.text.MessageFormat;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import jdk.jfr.consumer.RecordedClass;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.JGitInternalException;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
+import org.eclipse.jgit.diff.RawTextComparator;
 import org.eclipse.jgit.internal.storage.file.FileRepository;
 import org.eclipse.jgit.lib.*;
 import org.eclipse.jgit.revwalk.RevCommit;
@@ -20,8 +23,10 @@ import org.eclipse.jgit.revwalk.filter.MessageRevFilter;
 import org.eclipse.jgit.revwalk.filter.RevFilter;
 import org.eclipse.jgit.treewalk.AbstractTreeIterator;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
+import org.eclipse.jgit.treewalk.EmptyTreeIterator;
 import org.eclipse.jgit.treewalk.filter.PathSuffixFilter;
 import org.eclipse.jgit.treewalk.filter.TreeFilter;
+import org.eclipse.jgit.util.io.DisabledOutputStream;
 
 
 class Pair {
@@ -81,51 +86,51 @@ public class Miner {
         long nrOfCommits = 0;
         String oldHashID;
         String newHashID = "";
+        AbstractTreeIterator newCommit = null;
+        AbstractTreeIterator oldCommit = null;
+        RevCommit oldTargetCommit = null;
         boolean matched = false; // Used to print the correct git diff
-
+        boolean foundInThisBranch = false;
         Repository repo = new FileRepository(PATHGITDIRECTORY);
         Git git = new Git(repo);
         RevWalk walk = new RevWalk(repo);
         RevFilter revFilter = MessageRevFilter.create("RuntimeException");
         walk.setRevFilter(revFilter);
-
         List<Ref> branches = git.branchList().call();
-
+        int z = 1;
         for (Ref branch : branches) { // Iterating over all branches
             String branchName = branch.getName();
+
 
             System.out.println("Commits of branch: " + branch.getName());
             System.out.println("-------------------------------------");
 
             Iterable<RevCommit> commits = git.log().all().call();
-
-
+            int x = 0;
             for (RevCommit commit : commits) {
+
                 nrOfCommits++;
                 if (nrOfCommits % 1000 == 0) {
                     System.out.println(nrOfCommits + " commits checked so far");
                 }
-                if (!COMMITPATTERN.matcher(commit.getFullMessage()).find()) {
-                    continue;
-                }
-                boolean foundInThisBranch = false;
 
 
-                RevCommit targetCommit = walk.parseCommit(repo.resolve(
+
+
+
+
+
+                RevCommit targetCommit =  walk.parseCommit(repo.resolve(
                         commit.getName()));
-                if (!newHashID.equals("") && matched) {
-                    oldHashID = commit.getName();
-                    AbstractTreeIterator oldCommit = prepareTreeParser(repo, oldHashID);
-                    AbstractTreeIterator newCommit = prepareTreeParser(repo, newHashID);
-                    gitDiff(repo, oldCommit, newCommit, targetCommit);
-                    matched = false;
-                }
+
+                foundInThisBranch = false;
                 for (Map.Entry<String, Ref> e : repo.getAllRefs().entrySet()) {
                     if (e.getKey().startsWith(Constants.R_HEADS)) {
                         if (walk.isMergedInto(targetCommit, walk.parseCommit(
                                 e.getValue().getObjectId()))) {
                             String foundInBranch = e.getValue().getName();
                             if (branchName.equals(foundInBranch)) {
+
                                 foundInThisBranch = true;
                                 break;
                             }
@@ -134,10 +139,28 @@ public class Miner {
 
                 }
 
+
+
                 if (foundInThisBranch) {
 
-                    newHashID = commit.getName();
+
+
+
+                    if(matched){
+                        oldCommit = prepareTreeParser(repo, oldTargetCommit.getName());
+                        newCommit = prepareTreeParser(repo, commit.getName());
+                        if(commit.getName().equals("e68d3202ba1b2b06dd0f976a6292872d950eda9e"))
+                            System.out.println("HELLO?"); // "4ff6596a9f2efbcc90ad5f5f70ca089d1b6eb3d1"
+
+
+                        gitDiff(git, oldCommit, newCommit, oldTargetCommit);
+
+
+                        matched = false;
+                    }
+
                     if (match(commit.getFullMessage())) {
+
                         String name = commit.getName();
                         String author = commit.getAuthorIdent().getName();
                         String date = (new Date(commit.getCommitTime() * 1000L)).toString();
@@ -147,6 +170,7 @@ public class Miner {
                         fullData.add("Date         : " + date);
                         fullData.add("Full message : " + fullMessage);
                         hashValues.add(name);
+                        oldTargetCommit = commit;
                         matched = true;
                     }
                 }
@@ -156,21 +180,15 @@ public class Miner {
 
 
     private static boolean filterOutput(String input) {
-        int y = 0;
-
         for (String line : input.split("@@@")) {
-            if (y == 0) {
-                y++;
-                continue;
-            }
-            if (line.startsWith("+")) {
+
+            if (line.startsWith("-")) {
                 return true;
             }
         }
+
         return false;
     }
-
-
     /**
      * Simple writer to save data
      *
@@ -180,19 +198,18 @@ public class Miner {
      */
     private static void parseBody(String x, Pattern p, byte[] message, byte[] hashID,String date, String commitID, DiffEntry entry) throws IOException, GitAPIException {
         Matcher m = p.matcher(x);
-
         while (m.find()) {
 
             String content = m.group(1);
-
             boolean b = filterOutput(content);
             if (!b) {
+
                 nrOfTests++;
 
                 long asserts = getOccurences("(assert|verify)", content);
 
                 int loc = (int) getOccurences("@@@", content);
-                content = content.replaceAll("@@@-", "\n");// Removes minuses
+                content = content.replaceAll("@@@", "\n");// Removes minuses
                 content = content.replaceAll("@Test", "");
 
                 String getFunctionName = getFunctionName(content);
@@ -238,46 +255,51 @@ public class Miner {
         }
     }
 
+
+
     /**
      * Generates the git diffs for each commit.
      *
-     * @param repo      Repository analysing
      * @param oldCommit Old commit tree iterator
      * @param newCommit New Commit tree iterator
      */
-    private static void gitDiff(Repository repo, AbstractTreeIterator oldCommit, AbstractTreeIterator newCommit, RevCommit commitInformation) throws GitAPIException, IOException {
-        Pattern delimiter = Pattern.compile("(?=@Test[^{]+[{])((?:(?=.*?[{](?!.*?\\2)(.*}(?!.*\\3).*))(?=.*?}(?!.*?\\3)(.*)).)+?.*?(?=\\2)[^{]*(?=\\3$))");
+    private static void gitDiff(Git git, AbstractTreeIterator oldCommit, AbstractTreeIterator newCommit, RevCommit commitInformation) throws GitAPIException, IOException {
+        Pattern delimiter = Pattern.compile("(?=\\+[^@]+@Test[^{]+[{])((?:(?=.*?[{](?!.*?\\2)(.*}(?!.*\\3).*))(?=.*?}(?!.*?\\3)(.*)).)+?.*?(?=\\2)[^{]*(?=\\3$))");
         DiffFormatter formatter = new DiffFormatter(out);
-        TreeFilter treeFilter = PathSuffixFilter.create(".java");
 
-        Git git = new Git(repo);
+        TreeFilter treeFilter = PathSuffixFilter.create(".java");
+        formatter.setRepository(git.getRepository());
+        formatter.setPathFilter(TreeFilter.ANY_DIFF);
+        formatter.setDiffComparator(RawTextComparator.DEFAULT);
+
         List<DiffEntry> diff = git.diff().
                 setOldTree(oldCommit).
                 setNewTree(newCommit).
                 setPathFilter(treeFilter).
+                setOutputStream(out).
                 setShowNameAndStatusOnly(true).
                 call();
         for (DiffEntry entry : diff) {
 
-
-            formatter.setRepository(repo);
             formatter.format(entry);
-            formatter.setPathFilter(TreeFilter.ANY_DIFF);
             formatter.toFileHeader(entry);
             String x = out.toString(StandardCharsets.UTF_8);
+
             Date time = (new Date(commitInformation.getCommitTime() * 1000L));
             SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
             String date = format.format(time);
             x = x.replaceAll("\n", "@@@");
-            byte[] message = ("name:\t" + commitInformation.getName()
+            byte[] message = (
+                    "name:\t"       + commitInformation.getName()
                     + "\nauthor:\t" + commitInformation.getAuthorIdent().getName()
-                    + "\ndate\t" + date
+                    + "\ndate\t"    + date
                     + "\nmessage\t" + commitInformation.getFullMessage() + "\n").getBytes(StandardCharsets.UTF_8);
 
             byte[] hashid = commitInformation.getName().getBytes(StandardCharsets.UTF_8);
             if (100000 > x.length()) {
+
                 parseBody(x, delimiter, message, hashid, date,commitInformation.getName(), entry);
-            } else {
+            } else { // Avoids heap issues
                 parseBody(x.substring(0, x.length() >> 2), delimiter, message, hashid,date, commitInformation.getName(), entry);
                 parseBody(x.substring(x.length() >> 2, x.length() >> 1), delimiter, message, hashid,date, commitInformation.getName(), entry);
                 parseBody(x.substring(x.length() >> 1, (x.length() * 3) >> 2), delimiter, message, hashid,date, commitInformation.getName(), entry);
@@ -301,14 +323,18 @@ public class Miner {
      * @throws IOException If reader can't be resetted
      */
     private static AbstractTreeIterator prepareTreeParser(Repository repository, String objectId) throws IOException {
-        RevWalk walk = new RevWalk(repository);
-        RevCommit commit = walk.parseCommit(ObjectId.fromString(objectId));
-        RevTree tree = walk.parseTree(commit.getTree().getId());
-        CanonicalTreeParser treeParser = new CanonicalTreeParser();
-        ObjectReader reader = repository.newObjectReader();
-        treeParser.reset(reader, tree.getId());
-        walk.dispose();
-        return treeParser;
+
+        try (RevWalk walk = new RevWalk(repository)) {
+            RevCommit commit = walk.parseCommit(repository.resolve(objectId));
+            RevTree tree = walk.parseTree(commit.getTree().getId());
+            CanonicalTreeParser treeParser ;
+            try (ObjectReader reader = repository.newObjectReader()) {
+                treeParser = new CanonicalTreeParser(null,reader, tree.getId());
+                treeParser.reset(reader, tree.getId());
+            }
+            walk.dispose();
+            return treeParser;
+        }
     }
 
     /**
@@ -508,7 +534,7 @@ public class Miner {
             System.exit(1);
         } catch (IOException e) {
             System.err.println("Structure of the code is not valid");
-            System.err.println("In order to run the program an input.txt in the top repo folder must be added consisting of\"repo name\" \"http link \" \n example : jgit-miner https://github.com/Renstrom/jgit-miner.git ");
+            System.err.println("In order to run the program an input.txt in the top repo folder must be added consisting of\"repo name\" \"http link\" \n example :\njgit-miner https://github.com/Renstrom/jgit-miner.git");
             System.exit(1);
 
         } catch (GitAPIException e) {
