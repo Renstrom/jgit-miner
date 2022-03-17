@@ -8,14 +8,16 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import org.eclipse.jgit.api.CheckoutCommand;
+import org.eclipse.jgit.api.CheckoutResult;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.JGitInternalException;
-import org.eclipse.jgit.diff.DiffEntry;
-import org.eclipse.jgit.diff.DiffFormatter;
-import org.eclipse.jgit.diff.RawTextComparator;
+import org.eclipse.jgit.blame.BlameResult;
+import org.eclipse.jgit.diff.*;
 import org.eclipse.jgit.internal.storage.file.FileRepository;
 import org.eclipse.jgit.lib.*;
+import org.eclipse.jgit.patch.FileHeader;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevTree;
 import org.eclipse.jgit.revwalk.RevWalk;
@@ -24,6 +26,8 @@ import org.eclipse.jgit.revwalk.filter.RevFilter;
 import org.eclipse.jgit.treewalk.AbstractTreeIterator;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 
+import org.eclipse.jgit.treewalk.FileTreeIterator;
+import org.eclipse.jgit.treewalk.TreeWalk;
 import org.eclipse.jgit.treewalk.filter.PathSuffixFilter;
 import org.eclipse.jgit.treewalk.filter.TreeFilter;
 
@@ -61,7 +65,7 @@ public class Miner {
     static HashMap<Integer,Integer>  numberOfLoc                   = new HashMap<>(200);
     static HashMap<Integer,Integer>  numberOfCyclomaticComplexity  = new HashMap<>(200);
     static HashMap<String, Integer>  numberOfRemovedTestsPerCommit = new HashMap<>(200);
-    static HashMap<String, ArrayList<String>> methodTest           = new HashMap<>(200);
+   // static HashMap<String, ArrayList<String>> methodTest           = new HashMap<>(200);
 
     static FileOutputStream f;
 
@@ -77,26 +81,14 @@ public class Miner {
      * @return true if pattern sought after was matched, false otherwise
      */
     private static boolean match(String message) {
-        for (String s : message.split("\n")) {
+        for (String s : message.split(System.lineSeparator())) {
             if (COMMITPATTERN.matcher(s).find())
                 return true;
         }
         return false;
     }
 
-    private static RevCommit getPrevCommit(RevCommit commit,Repository repo) throws IOException {
-        RevWalk walk = new RevWalk(repo);
-        walk.markStart(commit);
-        int count = 0;
-        for (RevCommit rev : walk) {
-            if (count == 1) {
-                return rev;
-            }
-            count++;
-        }
-        walk.dispose();
-        return null;
-    }
+
 
 
     /**
@@ -117,7 +109,7 @@ public class Miner {
         RevFilter revFilter = MessageRevFilter.create("RuntimeException");
         walk.setRevFilter(revFilter);
         List<Ref> branches = git.branchList().call();
-
+        String id = "";
         for (Ref branch : branches) { // Iterating over all branches
             String branchName = branch.getName();
 
@@ -136,18 +128,19 @@ public class Miner {
 
 
 
-
-
                 RevCommit targetCommit =  walk.parseCommit(repo.resolve(
                         commit.getName()));
                 foundInThisBranch = false;
+                if (matched){
+                    commitDiff(git,oldTargetCommit,targetCommit,id);
+                    matched = false;
+                }
                 for (Map.Entry<String, Ref> e : repo.getAllRefs().entrySet()) {
                     if (e.getKey().startsWith(Constants.R_HEADS)) {
                         if (walk.isMergedInto(targetCommit, walk.parseCommit(
                                 e.getValue().getObjectId()))) {
                             String foundInBranch = e.getValue().getName();
                             if (branchName.equals(foundInBranch)) {
-
                                 foundInThisBranch = true;
                                 break;
                             }
@@ -155,27 +148,9 @@ public class Miner {
                     }
 
                 }
-
-
-
                 if (foundInThisBranch) {
 
-
-
-
-                    if(matched){
-
-
-
-                        oldCommit= prepareTreeParser(repo,oldTargetCommit.getName());
-
-                        newCommit = prepareTreeParser(repo, commit.getName());
-                        gitDiff(git, oldCommit, newCommit, oldTargetCommit);
-                        matched = false;
-                    }
-
                     if (match(commit.getFullMessage())) {
-
                         String name = commit.getName();
                         String author = commit.getAuthorIdent().getName();
                         String date = (new Date(commit.getCommitTime() * 1000L)).toString();
@@ -186,6 +161,9 @@ public class Miner {
                         fullData.add("Full message : " + fullMessage);
                         hashValues.add(name);
                         oldTargetCommit = targetCommit;
+                        id = commit.getName();
+                       // if(commit.getParentCount() != 0)
+                      //      commitDiff(git,commit,commit.getParent(0));
                         matched = true;
                     }
                 }
@@ -195,14 +173,16 @@ public class Miner {
 
 
     private static boolean filterOutput(String input) {
+        double x = 0;
+        double y = 0;
         for (String line : input.split("@@@")) {
-
+            x++;
             if (line.startsWith("-")) {
-                return true;
+                y++;
+
             }
         }
-
-        return false;
+        return y/x < 0.9;
     }
     /**
      * Simple writer to save data
@@ -211,26 +191,20 @@ public class Miner {
      * @param p       Pattern to parse out data
      * @param message Information of the new message
      */
-    private static void parseBody(String x, Pattern p, byte[] message, byte[] hashID,String date, String commitID, DiffEntry entry) throws IOException, GitAPIException {
+    private static void parseBody(String x, Pattern p, byte[] message, byte[] hashID,String date, String commitID, String path) throws IOException, GitAPIException {
         Matcher m = p.matcher(x);
         while (m.find()) {
-
             String content = m.group(1);
             boolean b = filterOutput(content);
             if (!b) {
-
                 nrOfTests++;
-
                 long asserts = getOccurences("(assert|verify)", content);
-
-                int loc = (int) getOccurences("@@@", content);
-                content = content.replaceAll("@@@", "\n");// Removes minuses
+                int loc = (int) getOccurencesLOC("@@@", content);
+                content = content.replaceAll("@@@-", "\n");//
                 content = content.replaceAll("@Test", "");
-
                 String getFunctionName = getFunctionName(content);
                 int cyclomaticComplexity = CCSolver.getCyclomaticComplexity(content);
-                String fullFunctionPath = entry.getOldPath() + " "+ getFunctionName;
-
+                String fullFunctionPath = path + " "+ getFunctionName;
                 numberOfLoc.put(loc,
                         numberOfLoc.containsKey(loc) ?
                                 numberOfLoc.get(loc)+1
@@ -248,17 +222,19 @@ public class Miner {
                                 numberOfRemovedTestsPerCommit.get(date+","+commitID)+1
                                 :1);
 
-                if (methodTest.containsKey(commitID)){
-                    methodTest.get(commitID).add(fullFunctionPath);
-                    tests.get(commitID).add(content);
+                if (tests.containsKey(commitID)){
+                    String add = "Cyclomatic Complexity\t "+ cyclomaticComplexity+ "\nAssertions\t\t "+ asserts + "\nLines of Code\t\t"+ loc + "\n" + content;
+            //        methodTest.get(commitID).add(fullFunctionPath);
+                    tests.get(commitID).add(add);
 
 
                 }else {
                     ArrayList<String> temp = new ArrayList<>();
                     temp.add(fullFunctionPath);
-                    methodTest.put(commitID,temp);
+                //    methodTest.put(commitID,temp);
                     ArrayList<String> temp2 = new ArrayList<>();
-                    temp2.add(content);
+                    String add = "Cyclomatic Complexity\t"+ cyclomaticComplexity+ "\nAssertions\t\t"+ asserts + "\nLines of Code\t\t"+ loc + "\n" + content;
+                    temp2.add(add);
                     tests.put(commitID,temp2);
 
                 }
@@ -279,6 +255,66 @@ public class Miner {
 
 
 
+
+    private static void parseResult(RevCommit commitInformation, String x, Pattern delimiter, DiffEntry entry, String id) throws IOException, GitAPIException {
+
+        Date time = (new Date(commitInformation.getCommitTime() * 1000L));
+        SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
+        String date = format.format(time);
+        x = x.replaceAll(System.lineSeparator(), "@@@");
+        byte[] message = (
+                "name:\t"       + id
+                        + "\nauthor:\t" + commitInformation.getAuthorIdent().getName()
+                        + "\ndate\t"    + date
+                        + "\nmessage\t" + commitInformation.getFullMessage() + "\n").getBytes(StandardCharsets.UTF_8);
+
+        byte[] hashid = commitInformation.getName().getBytes(StandardCharsets.UTF_8);
+        if (100000 > x.length()) {
+
+            parseBody(x, delimiter, message, hashid, date,id, entry.getOldPath());
+        } else { // Avoids stackoverflow issues
+            parseBody(x.substring(0, x.length() >> 2)                    , delimiter, message, hashid,date, id, entry.getOldPath());
+            parseBody(x.substring(x.length() >> 2, x.length() >> 1)      , delimiter, message, hashid,date, id, entry.getOldPath());
+            parseBody(x.substring(x.length() >> 1, (x.length() * 3) >> 2), delimiter, message, hashid,date, id, entry.getOldPath());
+            parseBody(x.substring((x.length() * 3) >> 2)                 , delimiter, message, hashid,date,id, entry.getOldPath());
+        }
+
+    }
+
+
+
+
+    /**
+     *
+     */
+    private static void commitDiff(Git git, RevCommit oldCommit, RevCommit newCommit, String id) throws GitAPIException, IOException {
+
+        DiffFormatter formatter = new DiffFormatter(out);
+        formatter.setRepository(git.getRepository());
+        Pattern delimiter = Pattern.compile("(?=\\-[^@]+@Test[^{]+[{])((?:(?=.*?[{](?!.*?\\2)(.*}(?!.*\\3).*))(?=.*?}(?!.*?\\3)(.*)).)+?.*?(?=\\2)[^{]*(?=\\3$))");
+
+        formatter.setPathFilter(TreeFilter.ANY_DIFF);
+        formatter.setPathFilter(PathSuffixFilter.create(".java"));
+       // formatter.format(oldCommit,newCommit);
+       // List<DiffEntry> diff = formatter.scan(newCommit,oldCommit);
+
+        TreeWalk walk = new TreeWalk(git.getRepository());
+        walk.addTree(newCommit.getTree());
+        walk.addTree(oldCommit.getTree());
+        List<DiffEntry> diff2 = DiffEntry.scan(walk,true);
+        for(DiffEntry entry : diff2){
+            formatter.format(entry);
+            FileHeader fh = formatter.toFileHeader(entry);
+            for (Edit f: fh.toEditList()) {
+                if(f.getType() == Edit.Type.REPLACE ){
+                    parseResult(newCommit,out.toString(StandardCharsets.UTF_8),delimiter,entry,id);
+                }
+                out.reset();
+            }
+
+        }
+    }
+
     /**
      * Generates the git diffs for each commit.
      *
@@ -288,49 +324,23 @@ public class Miner {
     private static void gitDiff(Git git, AbstractTreeIterator oldCommit, AbstractTreeIterator newCommit, RevCommit commitInformation) throws GitAPIException, IOException {
         Pattern delimiter = Pattern.compile("(?=\\+[^@]+@Test[^{]+[{])((?:(?=.*?[{](?!.*?\\2)(.*}(?!.*\\3).*))(?=.*?}(?!.*?\\3)(.*)).)+?.*?(?=\\2)[^{]*(?=\\3$))");
         DiffFormatter formatter = new DiffFormatter(out);
-
         TreeFilter treeFilter = PathSuffixFilter.create(".java");
         formatter.setRepository(git.getRepository());
         formatter.setPathFilter(TreeFilter.ANY_DIFF);
         formatter.setDiffComparator(RawTextComparator.DEFAULT);
-
         List<DiffEntry> diff = git.diff().
                 setOldTree(oldCommit).
                 setNewTree(newCommit).
                 setPathFilter(treeFilter).
-
                 setOutputStream(out).
                 setShowNameAndStatusOnly(true).
                 call();
         for (DiffEntry entry : diff) {
-
-            formatter.format(entry);
             formatter.setDetectRenames(true);
+            formatter.format(entry);
             formatter.toFileHeader(entry);
             String x = out.toString(StandardCharsets.UTF_8);
-            System.out.println(entry);
-            Date time = (new Date(commitInformation.getCommitTime() * 1000L));
-            SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
-            String date = format.format(time);
-            x = x.replaceAll("\n", "@@@");
-            byte[] message = (
-                    "name:\t"       + commitInformation.getName()
-                    + "\nauthor:\t" + commitInformation.getAuthorIdent().getName()
-                    + "\ndate\t"    + date
-                    + "\nmessage\t" + commitInformation.getFullMessage() + "\n").getBytes(StandardCharsets.UTF_8);
-
-            byte[] hashid = commitInformation.getName().getBytes(StandardCharsets.UTF_8);
-            if (100000 > x.length()) {
-
-                parseBody(x, delimiter, message, hashid, date,commitInformation.getName(), entry);
-            } else { // Avoids heap issues
-                parseBody(x.substring(0, x.length() >> 2), delimiter, message, hashid,date, commitInformation.getName(), entry);
-                parseBody(x.substring(x.length() >> 2, x.length() >> 1), delimiter, message, hashid,date, commitInformation.getName(), entry);
-                parseBody(x.substring(x.length() >> 1, (x.length() * 3) >> 2), delimiter, message, hashid,date, commitInformation.getName(), entry);
-                parseBody(x.substring((x.length() * 3) >> 2), delimiter, message, hashid,date,commitInformation.getName(), entry);
-            }
-
-            out.reset();
+            parseResult(commitInformation, x, delimiter, entry, "");
         }
         //out.close();
 
@@ -353,8 +363,8 @@ public class Miner {
             ObjectId treeId = commit.getTree().getId();
             CanonicalTreeParser treeParser ;
             ObjectReader reader = repository.newObjectReader();
-                treeParser = new CanonicalTreeParser(null,reader, treeId);
-                treeParser.reset(reader, treeId);
+            treeParser = new CanonicalTreeParser(null,reader, treeId);
+            treeParser.reset(reader, treeId);
             walk.dispose();
             return treeParser;
 
@@ -423,6 +433,19 @@ public class Miner {
         Matcher loc = locPat.matcher(test);
 
         return loc.results().count();
+    }
+
+    private static long getOccurencesLOC(String pattern, String test){
+        test = test.replaceAll("@@@", "\n");
+        test = test.replaceAll("((['\"])(?:(?!\\2|\\\\).|\\\\.)*\\2)|\\/\\/[^\\n]*|\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\/","");
+        String[] input = test.split("\n");
+        long count = 0;
+        for (String i: input) {
+            if(!i.matches("\\- *")){
+                count++;
+            }
+        }
+        return count;
     }
 
     /**
@@ -727,12 +750,12 @@ public class Miner {
 
 
     public static void saveResults() {
-        boolean a= false,b = false, c =false,d=false,e=false, g;
-      //  a = saveResults("assert", getDistribution(numberOfAsserts), getDetails(numberOfAsserts), "\n[%s]%s%s");
-      //  b = saveResults("loc", getDistribution(numberOfLoc, "{%s,%s}"), getDetails(numberOfLoc), "\n[%s]%s%s");
-      //  c = saveResults("commit", getDistribution(numberOfRemovedTestsPerCommit, "\n{%s,%s}"), "", "\n[%s]\n%s%s");
+        boolean a= false,b = false, c =false,d=false,e=false, g; // initializations used to remove tests if needed
+        a = saveResults("assert", getDistribution(numberOfAsserts), getDetails(numberOfAsserts), "\n[%s]%s%s");
+        b = saveResults("loc", getDistribution(numberOfLoc, "{%s,%s}"), getDetails(numberOfLoc), "\n[%s]%s%s");
+        c = saveResults("commit", getDistribution(numberOfRemovedTestsPerCommit, "{%s,%s}"), "", "\n[%s]%s%s");
        // d = saveResults("fullPathMethodsAndCommits", getDistribution2(methodTest, "\n{%s,%s}"), "", "\n[%s]\n%s%s");
-      //  e = saveResults("cyclomatic", getDistribution(numberOfCyclomaticComplexity, "{%s,%s}"),getDetails(numberOfCyclomaticComplexity), "\n[%s]%s%s");
+        e = saveResults("cyclomatic", getDistribution(numberOfCyclomaticComplexity, "{%s,%s}"),getDetails(numberOfCyclomaticComplexity), "\n[%s]%s%s");
         g = saveResultsTest("tests_"+OUTPUTPATH, generateTopArray());
         if (a && b && c && d && e && g) {
             System.out.println("Data saved");
