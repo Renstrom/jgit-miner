@@ -1,0 +1,14 @@
+<component name="ArtifactManager">
+  <artifact type="war" name="shiro-its-jaxrs-app:war">
+    <output-path>$PROJECT_DIR$/gitRepos/repos/shiro/integration-tests/jaxrs/app/target</output-path>
+    <properties id="maven-jee-properties">
+      <options>
+        <module>shiro-its-jaxrs-app</module>
+        <packaging>war</packaging>
+      </options>
+    </properties>
+    <root id="archive" name="shiro-its-jaxrs-app-2.0.0-SNAPSHOT.war">
+      <element id="artifact" artifact-name="shiro-its-jaxrs-app:war exploded" />
+    </root>
+  </artifact>
+</component>

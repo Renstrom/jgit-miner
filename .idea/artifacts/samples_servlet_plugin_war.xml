@@ -1,0 +1,14 @@
+<component name="ArtifactManager">
+  <artifact type="war" name="samples-servlet-plugin:war">
+    <output-path>$PROJECT_DIR$/gitRepos/repos/shiro/samples/servlet-plugin/target</output-path>
+    <properties id="maven-jee-properties">
+      <options>
+        <module>samples-servlet-plugin</module>
+        <packaging>war</packaging>
+      </options>
+    </properties>
+    <root id="archive" name="samples-servlet-plugin-2.0.0-SNAPSHOT.war">
+      <element id="artifact" artifact-name="samples-servlet-plugin:war exploded" />
+    </root>
+  </artifact>
+</component>

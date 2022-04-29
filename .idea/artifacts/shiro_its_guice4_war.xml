@@ -1,0 +1,14 @@
+<component name="ArtifactManager">
+  <artifact type="war" name="shiro-its-guice4:war">
+    <output-path>$PROJECT_DIR$/gitRepos/repos/shiro/integration-tests/guice4/target</output-path>
+    <properties id="maven-jee-properties">
+      <options>
+        <module>shiro-its-guice4</module>
+        <packaging>war</packaging>
+      </options>
+    </properties>
+    <root id="archive" name="shiro-its-guice4-2.0.0-SNAPSHOT.war">
+      <element id="artifact" artifact-name="shiro-its-guice4:war exploded" />
+    </root>
+  </artifact>
+</component>

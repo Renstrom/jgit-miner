@@ -1,0 +1,14 @@
+<component name="ArtifactManager">
+  <artifact type="war" name="samples-sprhib:war">
+    <output-path>$PROJECT_DIR$/gitRepos/repos/shiro/samples/spring-hibernate/target</output-path>
+    <properties id="maven-jee-properties">
+      <options>
+        <module>samples-sprhib</module>
+        <packaging>war</packaging>
+      </options>
+    </properties>
+    <root id="archive" name="samples-sprhib-2.0.0-SNAPSHOT.war">
+      <element id="artifact" artifact-name="samples-sprhib:war exploded" />
+    </root>
+  </artifact>
+</component>

@@ -1,0 +1,14 @@
+<component name="ArtifactManager">
+  <artifact type="war" name="samples-spring-mvc:war">
+    <output-path>$PROJECT_DIR$/gitRepos/repos/shiro/samples/spring-mvc/target</output-path>
+    <properties id="maven-jee-properties">
+      <options>
+        <module>samples-spring-mvc</module>
+        <packaging>war</packaging>
+      </options>
+    </properties>
+    <root id="archive" name="samples-spring-mvc-2.0.0-SNAPSHOT.war">
+      <element id="artifact" artifact-name="samples-spring-mvc:war exploded" />
+    </root>
+  </artifact>
+</component>

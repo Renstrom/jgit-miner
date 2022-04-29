@@ -1,0 +1,14 @@
+<component name="ArtifactManager">
+  <artifact type="war" name="samples-guice:war">
+    <output-path>$PROJECT_DIR$/gitRepos/repos/shiro/samples/guice/target</output-path>
+    <properties id="maven-jee-properties">
+      <options>
+        <module>samples-guice</module>
+        <packaging>war</packaging>
+      </options>
+    </properties>
+    <root id="archive" name="samples-guice-2.0.0-SNAPSHOT.war">
+      <element id="artifact" artifact-name="samples-guice:war exploded" />
+    </root>
+  </artifact>
+</component>

@@ -1,10 +1,7 @@
-deeplearning4j https://github.com/eclipse/deeplearning4j.git
-jetty https://github.com/eclipse/jetty.project.git
-hadoop https://github.com/apache/hadoop.git
-flink https://github.com/apache/flink.git
-kafka https://github.com/apache/kafka.git
-tomcat https://github.com/apache/tomcat.git
-hive https://github.com/apache/hive.git
-shiro https://github.com/apache/shiro.git
-hbase https://github.com/apache/hbase.git
-jmeter https://github.com/apache/jmeter.git
+druid https://github.com/apache/druid.git
+rocketmq https://github.com/apache/rocketmq.git
+dolphinscheduler https://github.com/apache/dolphinscheduler.git
+shardingsphere https://github.com/apache/shardingsphere.git
+dubbo https://github.com/apache/dubbo.git
+cloudstack https://github.com/apache/cloudstack.git
+iotdb https://github.com/apache/iotdb.git
